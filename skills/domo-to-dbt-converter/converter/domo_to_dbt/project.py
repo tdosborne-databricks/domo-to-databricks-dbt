@@ -86,7 +86,7 @@ def _schema_yml(models):
     return "\n".join(lines) + "\n"
 
 
-def write_dbt_project(result, out_dir, project_name="domo_advisor_services"):
+def write_dbt_project(result, out_dir, project_name="domo_dbt_project"):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "dbt_project.yml"), "w") as fh:
         fh.write(_dbt_project_yml(project_name))

@@ -66,10 +66,12 @@ See `real-data-overrides.md`. Build an `overrides.json` mapping each Domo source
 
 ## 5. dbt profile
 
-Create `<out_dir>/profiles.yml` (profile name must match `dbt_project.yml`'s `profile:`, default `domo_advisor_services`):
+Create `<out_dir>/profiles.yml`. The profile name must match `dbt_project.yml`'s `profile:`,
+which the converter derives from your flow name and **prints** ("dbt project/profile name: …").
+Use that exact name as the top key (shown here as `<project_name>`):
 
 ```yaml
-domo_advisor_services:
+<project_name>:            # e.g. the sanitized flow name the CLI printed
   target: dev
   outputs:
     dev:
