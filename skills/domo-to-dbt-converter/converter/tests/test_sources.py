@@ -24,7 +24,7 @@ def test_resolve_marks_missing_when_no_override():
     out = resolve_sources(FLOW, MAPPING, {})
     s = out["sources"][0]
     assert s["catalog_table"] is None
-    assert "Status" in s["synthetic_columns"] and "Region" in s["synthetic_columns"]
+    assert "Status" in s["inferred_columns"] and "Region" in s["inferred_columns"]
 
 def test_infer_collects_downstream_fields():
     cols = infer_source_columns(FLOW)["L"]

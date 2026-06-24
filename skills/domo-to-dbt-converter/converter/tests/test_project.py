@@ -22,7 +22,7 @@ def test_convert_assigns_layers_and_source_ref():
     filt = next(m for m in res["models"] if m["layer"] == "intermediate")
     assert "{{ ref('" in filt["sql"]
 
-def test_sources_yml_wires_override_and_marks_synthetic(tmp_path):
+def test_sources_yml_wires_real_table_override(tmp_path):
     res = convert_flow_to_dbt(FLOW, MAPPING, {"advisor_orders": "main.raw.advisor_orders"})
     write_dbt_project(res, str(tmp_path))
     sources = (tmp_path / "models" / "sources.yml").read_text()

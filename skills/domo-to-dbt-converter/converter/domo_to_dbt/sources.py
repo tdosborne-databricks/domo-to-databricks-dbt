@@ -1,4 +1,4 @@
-"""Resolve LoadFromVault inputs to UC tables, infer synthetic columns from tile refs."""
+"""Resolve LoadFromVault inputs to UC tables, infer needed columns from tile refs."""
 from .common import _sanitize
 from .dag import _deps
 
@@ -72,6 +72,6 @@ def resolve_sources(flow, dataset_mapping, overrides):
             "name": name,
             "dataset_id": ds_id,
             "catalog_table": catalog_table,
-            "synthetic_columns": cols_by_load.get(a["id"], []),
+            "inferred_columns": cols_by_load.get(a["id"], []),
         })
     return {"sources": sources}

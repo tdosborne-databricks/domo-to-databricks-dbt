@@ -27,7 +27,7 @@ def main(extract_dir, out_dir, overrides_path=None):
         with open(overrides_path) as fh:
             overrides = json.load(fh)
 
-    merged = {"flows": [], "needs_review": [], "sources_needing_synthetic": []}
+    merged = {"flows": [], "needs_review": [], "sources_needing_table": []}
     for flow in dataflows:
         res = convert_flow_to_dbt(flow, dataset_mapping, overrides)
         # Derive the dbt project/profile name from the flow so different flows
@@ -37,7 +37,7 @@ def main(extract_dir, out_dir, overrides_path=None):
         print(f"  dbt project/profile name: {project_name}")
         merged["flows"].append({"name": flow.get("name"), "models": len(res["models"])})
         merged["needs_review"].extend(res["report"]["needs_review"])
-        merged["sources_needing_synthetic"].extend(
+        merged["sources_needing_table"].extend(
             [s for s in res["sources"] if not s["catalog_table"]])
 
     with open(os.path.join(out_dir, "conversion_report.json"), "w") as fh:
@@ -45,7 +45,7 @@ def main(extract_dir, out_dir, overrides_path=None):
     print(f"Wrote dbt project to {out_dir}")
     print(f"  models: {sum(f['models'] for f in merged['flows'])}")
     print(f"  needs-review tiles: {len(merged['needs_review'])}")
-    print(f"  sources needing synthetic data: {len(merged['sources_needing_synthetic'])}")
+    print(f"  sources without a real-table override (wire via overrides.json): {len(merged['sources_needing_table'])}")
     return merged
 
 

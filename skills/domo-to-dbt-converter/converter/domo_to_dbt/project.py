@@ -74,7 +74,7 @@ def _sources_yml(sources):
         elif ct:
             lines.append(f"        # unresolved override (expected catalog.schema.table): {ct}")
         else:
-            lines.append("        # no real UC table yet — resolved as synthetic in the build schema")
+            lines.append("        # no override: wire this source to a real UC table in overrides.json (catalog.schema.table)")
     return "\n".join(lines) + "\n"
 
 

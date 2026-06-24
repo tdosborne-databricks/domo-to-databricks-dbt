@@ -17,7 +17,7 @@ def test_main_writes_project_and_report(tmp_path):
     assert os.path.exists(out / "conversion_report.json")
     assert "flows" in report
     assert "needs_review" in report
-    assert "sources_needing_synthetic" in report
+    assert "sources_needing_table" in report
 
 def test_project_name_derived_from_flow_name(tmp_path):
     # Generalizable: the generated dbt project/profile name must come from the

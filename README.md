@@ -8,9 +8,8 @@ dialect transpiled to Spark SQL automatically.
 
 Given a Domo flow export (`dataflows.json` + `dataset_mapping.json`), it generates a
 layered dbt project (staging / intermediate / marts), rewrites Beast Mode expressions to
-Spark SQL, and flags anything it can't translate deterministically. Sources wire to either
-synthetic stand-in tables (demo) or real Unity Catalog tables via `overrides.json` (the
-same project runs against either).
+Spark SQL, and flags anything it can't translate deterministically. Sources wire to your
+real Unity Catalog tables via an `overrides.json` mapping (`catalog.schema.table`).
 
 ## Install
 
@@ -47,5 +46,5 @@ Then add a `profiles.yml` and `dbt build`. Full workflow:
 
 v1 ships the converter with all 14 Domo tile types and automatic dialect transpilation.
 Validated end-to-end on a real 272-tile flow (Databricks serverless warehouse). Known
-follow-ups: lineage-aware synthetic-source attribution, and an option to materialize
-high-fan-out shared intermediates (compute-once reuse) instead of inlining them as CTEs.
+follow-up: an option to materialize high-fan-out shared intermediates (compute-once reuse)
+instead of inlining them as CTEs.

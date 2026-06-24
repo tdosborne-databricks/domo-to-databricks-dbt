@@ -30,7 +30,7 @@ working directory — the script puts its own directory on `sys.path`, so the `d
 package imports resolve regardless of cwd. (If you prefer relative paths, `cd <skill_dir>`
 first and use `converter/convert_dataflow_to_dbt.py`.)
 
-Prints model count, needs-review tile count, and sources-needing-synthetic count. Writes:
+Prints model count, needs-review tile count, and the count of sources still needing a real-table mapping. Writes:
 
 - `<out_dir>/dbt_project.yml`, `<out_dir>/models/sources.yml`
 - `<out_dir>/models/{staging,intermediate,marts}/*.sql`
@@ -43,26 +43,11 @@ Materialization: staging → **view**, intermediate → **ephemeral** (inlined a
 `conversion_report.json` keys:
 - `flows` — name + model count per flow.
 - `needs_review` — tiles needing manual attention (`model`, `type`, `note`).
-- `sources_needing_synthetic` — sources with no real UC table (each has `name` + inferred `synthetic_columns`).
+- `sources_needing_table` — sources with no real UC table mapping yet (each has `name` + inferred `inferred_columns`, the columns the flow references from that source).
 
-## 4a. Source mode: synthetic (demo)
+## 4. Wire sources to real tables (overrides.json)
 
-For a demo with no real data, create stand-in Delta tables for every `sources_needing_synthetic`. Use the SQL builder in `converter/dbt_validation/gen_synthetic_sources.py`:
-
-```python
-import json
-from dbt_validation.gen_synthetic_sources import synthetic_table_sql
-report = json.load(open("<out_dir>/conversion_report.json"))
-for src in report["sources_needing_synthetic"]:
-    stmt = synthetic_table_sql("main", "domo", src)   # main.domo.<source>
-    # execute stmt on your warehouse (dbt-databricks, SDK, or `databricks api`)
-```
-
-The synthetic schema name must match the dbt source name (`domo`). Tables are string-typed (`<col>_<id>`) — enough to prove the DAG runs, not for row-level validation.
-
-## 4b. Source mode: real data (production)
-
-See `real-data-overrides.md`. Build an `overrides.json` mapping each Domo source to a real UC table, pass it as the 3rd CLI arg, and `sources.yml` wires `{{ source('domo', name) }}` to the real `catalog.schema.table`.
+See `real-data-overrides.md`. Build an `overrides.json` mapping each Domo source to its real UC table, pass it as the 3rd CLI arg, and `sources.yml` wires `{{ source('domo', name) }}` to the real `catalog.schema.table`. Anything left in `sources_needing_table` still needs a mapping before its downstream models can build.
 
 ## 5. dbt profile
 
@@ -100,8 +85,8 @@ Categorize `dbt build` errors (read `<out_dir>/target/run_results.json`):
 | Error | Cause | Fix |
 |---|---|---|
 | `UNRESOLVED_ROUTINE`, `PARSE_SYNTAX_ERROR` | Beast Mode / MySQL dialect | Add a `transpile_expr` rule (see `dialect-rules.md`) or fix the flagged tile. |
-| `UNRESOLVED_COLUMN` | column missing from (synthetic) source | Real data fixes most; otherwise a synthetic-inference gap. |
-| `AMBIGUOUS_REFERENCE` | a tile re-creates a column that already exists (Domo replaces, Spark duplicates) | Often a synthetic artifact (a computed column fabricated onto the source) — disappears with real data. |
+| `UNRESOLVED_COLUMN` | a referenced column isn't in the wired source table | Confirm the `overrides.json` mapping points at the right table and the column exists there. |
+| `AMBIGUOUS_REFERENCE` | a tile re-creates a column that already exists (Domo replaces, Spark duplicates) | Column lineage `EXCEPT`s known cases; if it persists, the source table carries a column the flow also computes — confirm the mapped table's schema. |
 | `COLUMN_ALREADY_EXISTS` | join brings same-named columns from both sides | Disambiguate the join (flagged in the model). |
 
 Marts sit at the end of deep chains. Because intermediate tiles inline as CTEs, a mart fails at the **first** error in its chain — fix it and the **next** is exposed. A mart only turns green when its whole chain is clean.

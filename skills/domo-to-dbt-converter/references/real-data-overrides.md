@@ -1,8 +1,7 @@
 # Wiring real source data with overrides.json
 
-By default every Domo `LoadFromVault` source resolves to a **synthetic** table in the
-build schema. To run against **real** Unity Catalog tables (the production path), supply
-an `overrides.json` as the 3rd argument to the converter.
+Each Domo `LoadFromVault` source must be wired to a **real Unity Catalog table**. Supply an
+`overrides.json` as the 3rd argument to the converter mapping each source → its UC table.
 
 ## Format
 
@@ -24,24 +23,21 @@ are present.
 python3 <skill_dir>/converter/convert_dataflow_to_dbt.py <extract_dir> <out_dir> overrides.json
 ```
 
-For each overridden source, `models/sources.yml` emits `database:` / `schema:` /
-`identifier:` so dbt resolves `{{ source('domo', name) }}` to the real table. Sources
-without an override remain in `sources_needing_synthetic` (create synthetic tables for
-those, or add overrides as the customer's tables come online).
+For each mapped source, `models/sources.yml` emits `database:` / `schema:` / `identifier:`
+so dbt resolves `{{ source('domo', name) }}` to the real table. Any source still missing a
+mapping is listed in `conversion_report.json → sources_needing_table` — its downstream
+models can't build until you add it.
 
-## Why this matters
+## Why a correct mapping matters
 
-- **Portability:** the *same generated project* runs against synthetic tables (demo) or
-  real tables (production) — only `overrides.json` changes, no SQL edits.
-- **Clears most `UNRESOLVED_COLUMN` failures:** synthetic sources only contain columns the
-  converter could infer from tile references; real tables carry every column, so deep
-  passthroughs resolve.
-- **Removes synthetic `AMBIGUOUS_REFERENCE` artifacts:** synthetic inference can fabricate a
-  *computed* column onto a source (because the name appears downstream), which collides when
-  a tile re-creates it. Real sources don't carry computed columns, so the collision vanishes.
+- **`UNRESOLVED_COLUMN`** usually means the mapped table is missing a column the flow reads —
+  point the override at the right table (or confirm the column exists there).
+- **`AMBIGUOUS_REFERENCE`** can mean the mapped table already carries a column the flow also
+  computes downstream (Domo replaces; Spark duplicates). Column lineage `EXCEPT`s the cases it
+  can prove; if it persists, check the table's schema for the colliding column.
 
 ## Discovering candidate tables
 
-To find which Domo sources already exist as UC tables, list the source names from
-`conversion_report.json → sources_needing_synthetic` and match them against your catalog
-(by name or a known mapping). Start with the highest-fan-out sources (feed the most marts).
+List the source names from `conversion_report.json → sources_needing_table` and match them
+against your catalog (by name or a known mapping). Start with the highest-fan-out sources
+(they feed the most marts), so the most models unblock per mapping you add.
