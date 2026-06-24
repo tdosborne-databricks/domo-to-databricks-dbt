@@ -3,6 +3,10 @@
 Each Domo `LoadFromVault` source must be wired to a **real Unity Catalog table**. Supply an
 `overrides.json` as the 3rd argument to the converter mapping each source → its UC table.
 
+> Some Domo sources are file-based (an Excel/CSV export) and aren't in Unity Catalog yet.
+> Land each as a UC table first (Spark can't read `.xlsx` directly), then map it here exactly
+> like a Delta source — see `file-sources.md`.
+
 ## Format
 
 Map a Domo source → a fully-qualified UC table (`catalog.schema.table`). Keys may be the

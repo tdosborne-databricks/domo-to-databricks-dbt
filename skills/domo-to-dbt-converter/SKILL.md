@@ -35,7 +35,7 @@ A user installs the plugin, points the agent at a Domo extract, and says whether
    ```
    where `<skill_dir>` is this skill's directory (`.../skills/domo-to-dbt-converter`). `<extract_dir>` only needs `dataflows.json` + `dataset_mapping.json` (other files in a Domo export are ignored). Output: a dbt project under `<out_dir>` (models/staging, models/intermediate, models/marts, sources.yml, dbt_project.yml) and `conversion_report.json`.
 
-2. **Wire sources to real tables.** Provide an `overrides.json` mapping each Domo source → its Unity Catalog table (`catalog.schema.table`), passed as the 3rd CLI arg; `sources.yml` then resolves `{{ source('domo', name) }}` to the real table. Sources still missing a mapping are listed in `conversion_report.json → sources_needing_table` so you can see what's left to wire. See `references/real-data-overrides.md`.
+2. **Wire sources to real tables.** Provide an `overrides.json` mapping each Domo source → its Unity Catalog table (`catalog.schema.table`), passed as the 3rd CLI arg; `sources.yml` then resolves `{{ source('domo', name) }}` to the real table. Sources still missing a mapping are listed in `conversion_report.json → sources_needing_table` so you can see what's left to wire. See `references/real-data-overrides.md`. **A source that isn't a UC table yet (an Excel/CSV export) must be landed in Unity Catalog first, then mapped** — see `references/file-sources.md` (Excel can't be read by Spark directly).
 
 3. **Add a dbt profile** (`profiles.yml`) pointing at a Databricks SQL warehouse, then build:
    ```bash
