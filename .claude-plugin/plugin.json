@@ -1,0 +1,20 @@
+{
+  "name": "domo-to-dbt",
+  "version": "1.0.0",
+  "description": "Convert Domo Magic ETL dataflows into a runnable dbt-databricks project — one model per tile, Beast Mode/MySQL dialect transpiled to Spark SQL, with synthetic-source or real-table (overrides) modes.",
+  "author": {
+    "name": "Trevor Osborne",
+    "email": "trevor.osborne@databricks.com"
+  },
+  "keywords": [
+    "domo",
+    "dbt",
+    "databricks",
+    "migration",
+    "magic-etl",
+    "beast-mode",
+    "spark-sql",
+    "dataflow"
+  ],
+  "skills": []
+}
