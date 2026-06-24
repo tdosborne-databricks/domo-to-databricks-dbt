@@ -272,3 +272,17 @@ def test_formula_ignores_dialect_inside_line_comment():
          "fieldName": "y"}]}
     r = m_formula(a, _ctx(["g"]))
     assert r.needs_review is False
+
+def test_formula_flags_unsupported_mysql_function():
+    # Common MySQL-only functions Spark lacks should surface at conversion time.
+    a = {"type": "ExpressionEvaluator", "name": "af", "expressions": [
+        {"expression": "STR_TO_DATE(`d`,'%Y-%m-%d')", "fieldName": "x"}]}
+    r = m_formula(a, _ctx(["g"]))
+    assert r.needs_review is True and "STR_TO_DATE" in r.note
+
+def test_formula_does_not_flag_word_resembling_function():
+    # A column/identifier that merely contains a flagged word (not a call) is safe.
+    a = {"type": "ExpressionEvaluator", "name": "af", "expressions": [
+        {"expression": "upper(`makedate_label`)", "fieldName": "x"}]}
+    r = m_formula(a, _ctx(["g"]))
+    assert r.needs_review is False

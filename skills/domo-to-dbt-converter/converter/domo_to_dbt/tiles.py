@@ -56,27 +56,38 @@ def m_groupby(action, ctx):
     return TileResult(sql, "intermediate", bool(note), note)
 
 
-# Domo Beast Mode / MySQL tokens with no safe automatic Spark translation. Notes
-# are computed AFTER transpile_expr runs, so deterministic rewrites (IFNULL,
-# CURDATE, INTERVAL, CONVERT_TZ from UTC, ...) are already gone — anything that
-# survives here is genuinely manual work. The non-hard markers stay as a safety
-# net for variants transpile_expr deliberately leaves alone (e.g. CONVERT_TZ
-# with a non-UTC source).
-_DIALECT_MARKERS = ("DATE_WORKING_DIFF", "WORKING_DAYS", "CONVERT_TZ",
-                    "CURDATE", "INTERVAL ", "IFNULL")
+# MySQL / Beast Mode functions with no safe automatic Spark translation (or that
+# transpile_expr deliberately leaves alone, e.g. non-UTC CONVERT_TZ). Matched as
+# function CALLS (`NAME(`) so an identifier merely containing the word isn't
+# flagged. Notes are computed AFTER transpile_expr, so functions it handles
+# (IFNULL, CURDATE, ...) only remain here when transpilation didn't apply.
+# Extend this list as new flows surface uncovered functions (then add a
+# transpile_expr rule for the ones with a clean Spark equivalent).
+_UNSUPPORTED_FUNCS = (
+    "DATE_WORKING_DIFF", "WORKING_DAYS", "CONVERT_TZ", "CURDATE", "IFNULL",
+    # common MySQL-only functions Spark lacks — surfaced at conversion time:
+    "STR_TO_DATE", "GROUP_CONCAT", "TIMESTAMPDIFF", "TIMESTAMPADD",
+    "PERIOD_DIFF", "PERIOD_ADD", "MAKEDATE", "SEC_TO_TIME", "TIME_TO_SEC",
+)
+# Non-call dialect tokens (substring match).
+_DIALECT_SUBSTR = ("INTERVAL ",)
 
 
 def _dialect_note(texts):
     """Return a review note if any (already-transpiled) expression still carries
-    un-transpilable Domo dialect. Block comments are ignored so commented-out
-    dialect (valid no-ops in Spark) doesn't trigger a false flag."""
+    dialect with no safe auto-translation. Line (`--`) and block (`/* */`)
+    comments are ignored so commented-out dialect doesn't false-flag; functions
+    are matched as calls so identifiers containing a keyword aren't flagged."""
     found = []
     for t in texts:
         scan = re.sub(r"/\*.*?\*/", "", (t or ""), flags=re.S)
         scan = re.sub(r"(?m)--[^\n]*", "", scan).upper()
-        for m in _DIALECT_MARKERS:
+        for m in _DIALECT_SUBSTR:
             if m in scan and m not in found:
                 found.append(m)
+        for fn in _UNSUPPORTED_FUNCS:
+            if fn not in found and re.search(rf"\b{fn}\s*\(", scan):
+                found.append(fn)
     return ("Domo dialect needs manual transpile: " + ", ".join(sorted(found))) if found else ""
 
 

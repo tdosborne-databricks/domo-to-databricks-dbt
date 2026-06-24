@@ -23,6 +23,10 @@ The converter reads a **Domo extract directory** containing:
 
 (These come from the Domo API / a Step-1 extraction. See `references/workflow.md` for what each file must contain.)
 
+## What a session looks like (end-to-end)
+
+A user installs the plugin, points the agent at a Domo extract, and says whether they have real source data yet. The agent then drives a loop: **convert → (wire sources) → build → triage → surface gaps to the user → fix → repeat.** Most of this is automatic; the agent pauses for the user only on semantic choices (e.g. business-day vs calendar days), source-table mapping, and approvals. The agent reports build PASS/ERROR counts and a prioritized gap list each round, and stops when marts build (or the user calls it).
+
 ## Workflow
 
 1. **Convert.** Run the bundled CLI to generate the dbt project and a conversion report. Conversion needs only **Python 3.9+ (standard library)** — no install. Run it with the script's path (it works from any working directory; the script adds its own directory to the import path):
@@ -40,9 +44,32 @@ The converter reads a **Domo extract directory** containing:
    dbt build --project-dir <out_dir> --profiles-dir <out_dir>
    ```
 
-4. **Review flagged tiles.** `conversion_report.json → needs_review` lists tiles the converter could not fully auto-translate (raw SQL tiles, positional UNIONs, un-transpilable dialect). Each generated model also carries a `-- NEEDS REVIEW:` banner. Fix these by hand or extend the converter. See `references/dialect-rules.md`.
+4. **Surface & correct (the loop).** Collect every gap from BOTH discovery points and **present them to the user** — grouped, prioritized, each with a proposed fix. **Never silently leave a mart failing or drop a flagged tile.** Then apply the correction guide below, regenerate, rebuild, and re-report until clean or the user stops. (See "Surfacing gaps & the correction loop".)
 
-5. **Iterate.** Re-run convert → build → review. Marts sit at the end of deep chains; a mart only builds once every blocker in its chain clears.
+Marts sit at the end of deep chains; because intermediates inline as CTEs, a mart fails at the *first* error in its chain — fix it and the *next* is exposed, so iterate.
+
+## Surfacing gaps & the correction loop
+
+**The agent must surface every gap to the user — not work around it silently.** Gaps appear at two points; check both on every run:
+
+1. **At conversion** — `conversion_report.json → needs_review` (and `-- NEEDS REVIEW:` banners in the generated models). Covers known-hard tiles: raw SQL, positional UNION, and a denylist of common MySQL-only functions (`STR_TO_DATE`, `GROUP_CONCAT`, `TIMESTAMPDIFF`, …). When a new flow uses a function not yet covered, add it to `_UNSUPPORTED_FUNCS` in `tiles.py` (and a `transpile_expr` rule if it has a clean Spark equivalent).
+2. **At build** — parse `<out_dir>/target/run_results.json`. This is the comprehensive safety net: an `UNRESOLVED_ROUTINE` is almost always an **uncovered Beast Mode/MySQL function** that slipped through — name it for the user.
+
+### Correction guide
+
+| Gap (where seen) | Agent action |
+|---|---|
+| Uncovered dialect function — flagged at conversion, or `UNRESOLVED_ROUTINE` / `PARSE_SYNTAX_ERROR` at build | Identify the function. **Clear Spark equivalent** → add a `transpile_expr` rule **test-first** (`references/dialect-rules.md`), regenerate, rebuild. **Ambiguous semantics** (business-day, timezone, rounding) → **ask the user** before choosing. |
+| Raw `SQL` tile (always flagged) | Show the SQL; rewrite to Spark with the user, or confirm it already runs. |
+| Positional `UNION` (flagged) | Verify leg column order/count with the user; rebuild with explicit columns if they differ. |
+| `UNRESOLVED_COLUMN` | Usually a real-data gap → recommend wiring `overrides.json` (`references/real-data-overrides.md`). On synthetic data, note the inference limit. |
+| `COLUMN_ALREADY_EXISTS` (join) | Disambiguate the colliding columns in the join. |
+| Anything with ambiguous intent | **Stop and ask the user — never guess.** |
+
+### Automatic vs needs-the-user
+
+- **Automatic:** running convert/build, triaging results, and applying deterministic dialect rules (a function with one obvious Spark equivalent).
+- **Needs the user:** semantic choices (e.g. business-day vs calendar days, timezone assumptions), which Domo sources map to which real UC tables, and accepting any approximation.
 
 ## What is auto-translated vs flagged
 
