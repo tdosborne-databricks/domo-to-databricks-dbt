@@ -37,10 +37,7 @@ A user installs the plugin, points the agent at a Domo extract, and says whether
 
 2. **Wire sources to real tables.** Provide an `overrides.json` mapping each Domo source → its Unity Catalog table (`catalog.schema.table`), passed as the 3rd CLI arg; `sources.yml` then resolves `{{ source('domo', name) }}` to the real table. Sources still missing a mapping are listed in `conversion_report.json → sources_needing_table` so you can see what's left to wire. See `references/real-data-overrides.md`. **A source that isn't a UC table yet (an Excel/CSV export) must be landed in Unity Catalog first, then mapped** — see `references/file-sources.md` (Excel can't be read by Spark directly).
 
-3. **Add a dbt profile** (`profiles.yml`) pointing at a Databricks SQL warehouse, then build:
-   ```bash
-   dbt build --project-dir <out_dir> --profiles-dir <out_dir>
-   ```
+3. **Build.** The recommended way to run the build on Databricks is a **Workflows dbt task** (`project_directory` + `commands: ["dbt build"]` + `warehouse_id` + `catalog`/`schema`) — it authenticates as the job's run-as identity, so there's **no token to manage**. To run dbt yourself instead, add a `profiles.yml` using **OAuth** (service principal), then `dbt build --project-dir <out_dir> --profiles-dir <out_dir>`. **Do not rely on a PAT in an env var — serverless compute doesn't expose one.** See `references/authentication.md`.
 
 4. **Surface & correct (the loop).** Collect every gap from BOTH discovery points and **present them to the user** — grouped, prioritized, each with a proposed fix. **Never silently leave a mart failing or drop a flagged tile.** Then apply the correction guide below, regenerate, rebuild, and re-report until clean or the user stops. (See "Surfacing gaps & the correction loop".)
 

@@ -4,9 +4,11 @@ Detailed steps for converting and building a Domo dataflow as dbt on Databricks.
 
 ## 0. Prerequisites
 
-- Python 3.9+ (standard library only — the converter has no third-party deps).
-- `dbt-databricks` for building: `pip install dbt-databricks`.
-- A Databricks workspace + SQL warehouse, and auth (OAuth/CLI or a PAT).
+- Python 3.9+ (standard library only — the converter has no third-party deps). The
+  conversion step needs nothing else and no credentials.
+- For the build: `dbt-databricks` (`pip install dbt-databricks`) if running dbt yourself, or
+  just a Databricks Workflows **dbt task** (no local install). A Databricks workspace + SQL
+  warehouse. Auth via the dbt task's job identity or OAuth — see `authentication.md`.
 
 ## 1. Get the Domo extract
 
@@ -49,7 +51,13 @@ Materialization: staging → **view**, intermediate → **ephemeral** (inlined a
 
 See `real-data-overrides.md`. Build an `overrides.json` mapping each Domo source to its real UC table, pass it as the 3rd CLI arg, and `sources.yml` wires `{{ source('domo', name) }}` to the real `catalog.schema.table`. Anything left in `sources_needing_table` still needs a mapping before its downstream models can build.
 
-## 5. dbt profile
+## 5. dbt profile / authentication
+
+> **On Databricks (esp. serverless), prefer a Workflows dbt task** — it builds the project
+> authenticated as the job's run-as identity, with no token and no `profiles.yml` to manage.
+> If you run dbt yourself, use **OAuth** (service principal), not a PAT in an env var —
+> serverless compute doesn't expose one. Full guidance + the dbt-task config: `authentication.md`.
+
 
 Create `<out_dir>/profiles.yml`. The profile name must match `dbt_project.yml`'s `profile:`,
 which the converter derives from your flow name and **prints** ("dbt project/profile name: …").
@@ -63,17 +71,33 @@ Use that exact name as the top key (shown here as `<project_name>`):
       type: databricks
       host: <workspace-host>            # no https://
       http_path: /sql/1.0/warehouses/<warehouse-id>
-      auth_type: oauth                  # or token: <pat>
       catalog: main
       schema: domo_migration_dbt
       threads: 8
+      auth_type: oauth                  # OAuth M2M (service principal):
+      client_id: "{{ env_var('DATABRICKS_CLIENT_ID') }}"
+      client_secret: "{{ env_var('DATABRICKS_CLIENT_SECRET') }}"
 ```
+
+(SP secret belongs in a Databricks secret scope / your env, not the file. PAT `token:` works
+locally but fails on serverless — see `authentication.md`.)
 
 ## 6. Build
 
+Running dbt yourself:
 ```bash
 dbt debug --project-dir <out_dir> --profiles-dir <out_dir>   # verify connection
 dbt build --project-dir <out_dir> --profiles-dir <out_dir>
+```
+Or, on Databricks, a Workflows **dbt task** (no token; see `authentication.md`):
+```yaml
+- task_key: build_dbt
+  dbt_task:
+    project_directory: <out_dir>
+    commands: ["dbt build"]
+    warehouse_id: "<sql_warehouse_id>"
+    catalog: main
+    schema: domo_migration_dbt
 ```
 
 Marts are Delta tables; the converter sets `delta.columnMapping.mode=name` so Domo column names with spaces/`#` are allowed.
