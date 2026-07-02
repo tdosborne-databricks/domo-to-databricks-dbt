@@ -26,6 +26,31 @@ exists; Spark **duplicates** it (→ `AMBIGUOUS_REFERENCE`). The converter emits
 `select * except(name), expr AS name` when a tile either self-references its own output
 or (via column lineage) re-creates a column known to exist upstream.
 
+## Limits that only real upstream schemas can close
+
+Boundary-based CTE collapsing eliminates the *cross-model-boundary* column-conflict
+class (a `select *` handoff between ephemeral models losing column context). What it
+**cannot** close is anything that depends on a physical table's real column set, because
+that isn't in the Domo flow JSON. Two residual classes to expect, and the fix for both:
+
+1. **Formula collides with a pre-baked source column it never references.**
+   `Month = MONTH(order_date)` when the LoadFromVault table *already physically has*
+   `Month`. The self-reference heuristic (`` `fn` in expr ``) doesn't fire (the formula
+   never reads `Month`), and column lineage can't help because `LoadFromVault` reports
+   no produced columns — `lineage.py` returns `[]` for sources, and `infer_source_columns`
+   only captures columns the flow references *by name*, never ones pulled in silently via
+   `*`. Result: a residual `COLUMN_ALREADY_EXISTS`.
+2. **Join carries a non-key column present on both sides.** `m_join` excepts the right
+   side's join *keys* but cannot know which *non-key* columns also exist on both sides →
+   duplicate name → `AMBIGUOUS_REFERENCE` downstream. This tile is flagged
+   `needs_review=True` so the boundary model surfaces in `conversion_report.json`.
+
+**The fix for both is the same and is NOT `infer_source_columns`:** wire the real Unity
+Catalog table schema via the `overrides` map (`scaffold.py` / `references/conventions.md`),
+or read `information_schema.columns` for the resolved table. Only the real schema tells you
+which names pre-exist. Do not expect a clean first `dbt build` on flows with source-column
+collisions until sources are wired to real tables.
+
 ## Flagged for manual review (not auto-translated)
 
 - **Raw SQL tiles** — arbitrary MySQL; the converter rewrites known functions and

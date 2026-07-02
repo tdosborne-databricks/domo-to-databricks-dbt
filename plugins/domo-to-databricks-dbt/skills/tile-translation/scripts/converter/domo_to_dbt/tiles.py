@@ -124,7 +124,13 @@ def m_join(action, ctx):
     sql = ("-- non-key column-name collisions across sides may still need manual disambiguation\n"
            f"select l.*, {right_cols}\nfrom {{{{ ref('{left}') }}}} l\n"
            f"{jt} join {{{{ ref('{right}') }}}} r on {cond}")
-    return TileResult(sql, "intermediate", False, "")
+    # We except the right side's join keys, but any NON-key column present on both
+    # sides also collides (duplicate name -> AMBIGUOUS_REFERENCE when referenced
+    # downstream). We can't detect that statically without both sides' real schemas,
+    # so surface the boundary model for review rather than hiding it in a comment.
+    note = ("join may carry non-key columns present on both sides (duplicate names -> "
+            "AMBIGUOUS_REFERENCE downstream); verify against real upstream schemas")
+    return TileResult(sql, "intermediate", True, note)
 
 
 # Domo Magic ETL column types -> Spark/Databricks SQL types. Domo emits a few
