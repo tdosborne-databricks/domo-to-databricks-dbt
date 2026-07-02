@@ -1,0 +1,24 @@
+{
+  "name": "domo-to-databricks-dbt",
+  "version": "2.0.0",
+  "description": "Domo Magic ETL → dbt on Databricks migration agent. Five custom skills — domo-ingestion, tile-translation, org-dbt-conventions, databricks-materialization-policy, migration-validation — that transpile Domo dataflows into a runnable, tested, DAG-orchestrated dbt-databricks project. Overlays defer to the official dbt and databricks agent skills.",
+  "author": {
+    "name": "Trevor Osborne",
+    "email": "trevor.osborne@databricks.com"
+  },
+  "homepage": "https://github.com/trevor-osborne/domo-to-databricks-dbt",
+  "repository": "https://github.com/trevor-osborne/domo-to-databricks-dbt",
+  "keywords": [
+    "domo",
+    "dbt",
+    "databricks",
+    "migration",
+    "magic-etl",
+    "beast-mode",
+    "spark-sql",
+    "dataflow",
+    "unity-catalog",
+    "asset-bundle"
+  ],
+  "skills": "./skills/"
+}

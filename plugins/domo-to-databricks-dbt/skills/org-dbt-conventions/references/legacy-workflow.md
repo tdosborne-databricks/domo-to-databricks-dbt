@@ -27,7 +27,7 @@ These are produced by a Domo API extraction (the "Step 1" inventory). If you onl
 python3 <skill_dir>/converter/convert_dataflow_to_dbt.py <extract_dir> <out_dir> [overrides.json]
 ```
 
-`<skill_dir>` is `.../skills/domo-to-dbt-converter`. Run it via the script's path from any
+`<skill_dir>` is `.../skills/domo-to-databricks-dbt-converter`. Run it via the script's path from any
 working directory — the script puts its own directory on `sys.path`, so the `domo_to_dbt`
 package imports resolve regardless of cwd. (If you prefer relative paths, `cd <skill_dir>`
 first and use `converter/convert_dataflow_to_dbt.py`.)

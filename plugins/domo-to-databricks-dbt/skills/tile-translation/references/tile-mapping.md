@@ -1,7 +1,10 @@
 # Domo Magic ETL tile → dbt model mapping
 
-Each Domo tile (`action`) becomes one dbt model. Mappers live in
-`converter/domo_to_dbt/tiles.py` (`m_<type>()`); dispatch is in `render_tile()`.
+Each Domo tile (`action`) maps to a SQL fragment (a CTE, or the root SELECT of a model). Mappers
+live in `converter/domo_to_dbt/tiles.py` (`m_<type>()`); dispatch is in `render_tile()`. The `dbt
+layer` column below is the layer a tile lands in **when it is a model boundary** (source / sink /
+reuse point); a non-boundary tile of the same type simply becomes a CTE inside its consumer's model.
+See `paradigm.md` for the granularity rule and `project.py` for the CTE-collapse assembly.
 
 | Domo tile `type` | dbt layer | Maps to | Notes |
 |---|---|---|---|
