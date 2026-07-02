@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "domo-to-databricks-dbt-marketplace",
+  "owner": {
+    "name": "Trevor Osborne",
+    "email": "trevor.osborne@databricks.com"
+  },
+  "metadata": {
+    "description": "Domo Magic ETL → dbt on Databricks migration skills.",
+    "version": "2.0.0"
+  },
+  "plugins": [
+    {
+      "name": "domo-to-databricks-dbt",
+      "source": "./plugins/domo-to-databricks-dbt",
+      "description": "Migrate Domo Magic ETL dataflows to dbt on Databricks: ingest the export, transpile the tile DAG to Spark SQL CTEs, structure and test a dbt project, choose materializations, validate in tiers, and deploy as scheduled Databricks Jobs.",
+      "category": "data-engineering",
+      "keywords": ["domo", "dbt", "databricks", "migration", "magic-etl", "beast-mode", "spark-sql", "unity-catalog"]
+    }
+  ]
+}
