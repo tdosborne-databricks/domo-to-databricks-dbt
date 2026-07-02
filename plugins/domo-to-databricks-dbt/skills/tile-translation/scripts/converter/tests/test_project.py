@@ -52,6 +52,24 @@ def test_sources_yml_wires_real_table_override(tmp_path):
     assert "schema: raw" in sources
     assert "identifier: advisor_orders" in sources
 
+
+def test_sources_yml_db_schema_at_source_level_not_table_level(tmp_path):
+    # dbt honors database/schema ONLY at the source level; a table-level schema is silently
+    # ignored (dbt falls back to the source name 'domo' as the schema -> relation-not-found).
+    # Regression for a live e2e failure: staging views resolved to main.domo.* not main.raw.*.
+    res = convert_flow_to_dbt(FLOW, MAPPING, {"advisor_orders": "main.raw.advisor_orders"})
+    write_dbt_project(res, str(tmp_path))
+    lines = (tmp_path / "models" / "sources.yml").read_text().splitlines()
+    # database:/schema: must sit at source-level indent (4 spaces) and BEFORE `tables:`;
+    # they must never appear at table-level indent (8 spaces).
+    tables_idx = next(i for i, l in enumerate(lines) if l.strip() == "tables:")
+    assert any(l == "    database: main" for l in lines[:tables_idx])
+    assert any(l == "    schema: raw" for l in lines[:tables_idx])
+    assert not any(l.startswith("        schema:") for l in lines)
+    assert not any(l.startswith("        database:") for l in lines)
+    # tables still carry identifier at table level
+    assert any(l.strip() == "identifier: advisor_orders" for l in lines[tables_idx:])
+
 def test_marts_enable_delta_column_mapping(tmp_path):
     res = convert_flow_to_dbt(FLOW, MAPPING, {})
     write_dbt_project(res, str(tmp_path))
