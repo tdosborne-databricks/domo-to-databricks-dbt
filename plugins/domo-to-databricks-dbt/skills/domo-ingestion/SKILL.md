@@ -24,9 +24,11 @@ graph — they only read `flows/<flow_id>.json` + `inventory.csv`.
   Domo API scripts and handed us the export files. We parse them **as-is**, infer their structure,
   and normalize. We do NOT re-extract. See `references/export-format-mapping.md` (filled in once
   the real files are inspected — Build Sequence Step 2).
-- **Mode B — Live API (optional, only when Domo credentials exist).** A Domo API client pulls
-  dataflow definitions + DomoStats/governance data (lineage, schedules, row counts, usage). Stub
-  today; verified endpoints are recorded in `references/domo-api-endpoints.md`.
+- **Mode B — Live API (optional, only when Domo credentials exist).** `scripts/domo_api_client.py`
+  pulls dataflow definitions + datasets/Beast Modes/streams over read-only GETs and writes the
+  **same export file set as Mode A** to a local folder — so `ingest_export.py` consumes it unchanged.
+  Runs **locally** (no Databricks/`dbutils`/UC Volume); token via `--token` or `$DOMO_DEV_TOKEN`.
+  Verified endpoints are recorded in `references/domo-api-endpoints.md`.
 
 ## Workflow
 
@@ -41,8 +43,14 @@ graph — they only read `flows/<flow_id>.json` + `inventory.csv`.
    dependency ordering the batch runs in.
 
 ```bash
+# Mode A — normalize a provided export (default):
 python3 <skill_dir>/scripts/ingest_export.py <export_dir> <out_dir>
 # → <out_dir>/flows/<flow_id>.json  +  <out_dir>/inventory.csv  +  <out_dir>/completeness_report.json
+
+# Mode B — pull a fresh export live from Domo first (local, read-only), then normalize it:
+export DOMO_DEV_TOKEN=xxxxxxxx   # Domo → Admin → Authentication → Access tokens
+python3 <skill_dir>/scripts/domo_api_client.py --instance <subdomain> --flow-name "<filter>" --out ./domo_extract
+python3 <skill_dir>/scripts/ingest_export.py ./domo_extract/extract_<ts> <out_dir>
 ```
 
 ## Output contract (both modes identical)

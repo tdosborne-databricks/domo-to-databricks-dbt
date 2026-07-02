@@ -98,5 +98,9 @@ becomes its own model only if it's a boundary (source / sink / reuse point); eve
 inlines as a named CTE. On the real AppDirect flow this produces **70 models from 272 tiles**
 (29 staging + 22 intermediate + 19 marts) with full flow→model→tile traceability headers.
 
-**Still stubbed (need the real export / a workspace):** the ingestion Mode A parser, and the
-static-validator / dbt-test-generator / customer-diff-kit scripts. See each SKILL.md's STATUS notes.
+**All skill scripts implemented (done):** ingestion Mode A parser (`ingest_export.py`) and
+Mode B live extractor (`domo_api_client.py`, runs locally — no Databricks), org-conventions
+`scaffold.py`, `materialization_policy.py`, and the Tier-1 `static_validator.py` /
+`gen_dbt_tests.py` / `build_customer_diff_kit.py`. All exercised end-to-end against the real
+AppDirect export; **89 tests pass** (82 converter + 7 pipeline integration). Static validation
+parses all 70 generated models in the Databricks dialect via `sqlglot` (optional dep).
