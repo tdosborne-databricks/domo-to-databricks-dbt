@@ -163,18 +163,40 @@ def _dbt_project_yml(project_name):
 
 
 def _sources_yml(sources):
-    lines = ["version: 2", "sources:", "  - name: domo", "    tables:"]
+    # dbt honors `database`/`schema` only at the SOURCE level; at the table level only
+    # `identifier` is honored (a table-level `schema`/`database` is silently ignored and dbt
+    # falls back to the source name as the schema). All models here reference a single source
+    # named 'domo', so we hoist the common catalog/schema to the source level and leave only
+    # `identifier` per table. When overrides disagree on catalog/schema, the dominant pair wins
+    # and each outlier gets a warning comment (dbt cannot target a different schema per-table
+    # under one source name -- land those tables in the common schema or split the source).
+    from collections import Counter
+    resolved = {}
+    counts = Counter()
+    for s in sources:
+        parts = (s["catalog_table"] or "").split(".")
+        if len(parts) == 3:
+            resolved[s["name"]] = tuple(parts)         # (catalog, schema, table)
+            counts[(parts[0], parts[1])] += 1
+
+    lines = ["version: 2", "sources:", "  - name: domo"]
+    dom_catalog = dom_schema = None
+    if counts:
+        (dom_catalog, dom_schema), _ = counts.most_common(1)[0]
+        lines.append(f"    database: {dom_catalog}")
+        lines.append(f"    schema: {dom_schema}")
+    lines.append("    tables:")
+
     for s in sources:
         lines.append(f"      - name: {s['name']}")
         ct = s["catalog_table"]
-        parts = ct.split(".") if ct else []
-        if len(parts) == 3:
-            # real UC table override -> wire catalog/schema/table so dbt resolves
-            # {{ source('domo', name) }} to the actual table, not the build schema.
-            catalog, schema, table = parts
-            lines.append(f"        database: {catalog}")
-            lines.append(f"        schema: {schema}")
+        if s["name"] in resolved:
+            catalog, schema, table = resolved[s["name"]]
             lines.append(f"        identifier: {table}")
+            if (catalog, schema) != (dom_catalog, dom_schema):
+                lines.append(f"        # WARNING: override targets {catalog}.{schema}, but dbt sources "
+                             f"take one schema at the source level ({dom_catalog}.{dom_schema}); "
+                             f"land this table in {dom_schema} or give it its own source block.")
         elif ct:
             lines.append(f"        # unresolved override (expected catalog.schema.table): {ct}")
         else:
