@@ -32,7 +32,10 @@ query performance).
 Emit the mapping to `materialization.json` for the scaffolder to apply via `dbt_project.yml`
 (`+materialized`, `+cluster_by`, `+schema`) or per-model config blocks.
 
-## TODO (fill during calibration)
+## Per-engagement calibration
 
-- Confirm the row-count threshold against the customer's actual dataset sizes (from inventory).
+The defaults above ship ready to run; two inputs are customer-specific and should be confirmed
+at the start of each engagement (they tune thresholds, they are not unfinished work):
+
+- Confirm the row-count threshold against the customer's actual dataset sizes (from `inventory.csv`).
 - Confirm incremental `merge` keys are stable (Domo append flows sometimes lack a natural key).

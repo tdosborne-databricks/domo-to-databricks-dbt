@@ -16,10 +16,10 @@ def main(extract_dir, out_dir, overrides_path=None):
         dataflows = json.load(fh)
     if isinstance(dataflows, dict):
         dataflows = [dataflows]
-    if len(dataflows) > 1:
-        print(f"WARNING: {len(dataflows)} flows found. write_dbt_project writes a shared "
-              f"dbt_project.yml/sources.yml per call — multiple flows into one out_dir will "
-              f"overwrite those root files. Generate each flow into a separate out_dir.")
+    # write_dbt_project writes a shared dbt_project.yml/sources.yml per call, so multiple flows
+    # sharing one out_dir would overwrite each other's root files. When >1 flow, give each its
+    # own subproject dir (mirrors org-dbt-conventions/scaffold.py); single flow uses out_dir as-is.
+    multi = len(dataflows) > 1
     with open(os.path.join(extract_dir, "dataset_mapping.json")) as fh:
         dataset_mapping = json.load(fh)
     overrides = {}
@@ -33,8 +33,9 @@ def main(extract_dir, out_dir, overrides_path=None):
         # Derive the dbt project/profile name from the flow so different flows
         # get distinct, meaningful names (this is the name to put in profiles.yml).
         project_name = _sanitize(flow.get("name") or "") or "domo_dbt_project"
-        write_dbt_project(res, out_dir, project_name=project_name)  # TODO(multi-flow): root files overwritten when N>1 flows share out_dir
-        print(f"  dbt project/profile name: {project_name}")
+        flow_out = os.path.join(out_dir, project_name) if multi else out_dir
+        write_dbt_project(res, flow_out, project_name=project_name)
+        print(f"  dbt project/profile name: {project_name} -> {flow_out}")
         merged["flows"].append({"name": flow.get("name"), "models": len(res["models"])})
         merged["needs_review"].extend(res["report"]["needs_review"])
         merged["sources_needing_table"].extend(

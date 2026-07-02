@@ -1,7 +1,8 @@
 # Domo API endpoints (Mode B — live pull)
 
-Only for Mode B (credentials present). This engagement defaults to Mode A (provided export), so
-this is a stub for later. Endpoints below were **verified** against a real Domo workspace during
+Only for Mode B (credentials present). This engagement defaults to Mode A (provided export); Mode B
+is **implemented** in `scripts/domo_api_client.py` (runs locally, no Databricks). The endpoints
+below are the ones that client uses — **verified** against a real Domo workspace during
 Step-1 extraction work — the OAuth-only `/v1/*` paths from Domo's public docs return an HTML login
 page when hit with a developer token, so use the internal `/api/*` paths with a dev token.
 

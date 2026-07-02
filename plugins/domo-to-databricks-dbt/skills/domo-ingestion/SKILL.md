@@ -63,7 +63,7 @@ python3 <skill_dir>/scripts/ingest_export.py ./domo_extract/extract_<ts> <out_di
 
 - `references/normalized-graph-schema.md` — the internal graph schema (the contract).
 - `references/magic-etl-json-schema.md` — Domo Magic ETL tile/edge encoding.
-- `references/export-format-mapping.md` — the customer's actual export layout (fill in Step 2).
+- `references/export-format-mapping.md` — the customer's actual export layout (mapped from the real AppDirect export).
 - `references/domo-api-endpoints.md` — verified Domo API endpoints for Mode B.
 - `references/file-sources.md` — Excel/CSV source files can't be read by Spark directly; land them
   in Unity Catalog first.
