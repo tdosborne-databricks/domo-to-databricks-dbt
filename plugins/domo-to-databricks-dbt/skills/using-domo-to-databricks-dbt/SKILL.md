@@ -30,6 +30,44 @@ to validate against the Domo flow graph, and a "faithful" project left unoptimiz
 accumulates hundreds of raw-passthrough models nobody wants to own.
 </EXTREMELY-IMPORTANT>
 
+## Before you start: ask once, then stop asking
+
+At the start of a fresh session, before touching `domo-ingestion`, ask the user one question if it
+isn't already obvious from context:
+
+**Is `dbt build` going to run locally, or on Databricks (warehouse / Databricks Job)?**
+
+This isn't a style preference — it changes concrete behavior downstream and is expensive to
+discover mid-pipeline instead of up front:
+- `dbt-error-triage` needs to know what `dbt build` even means here (local DuckDB/Spark vs. a
+  Databricks SQL warehouse or a `dbt_task` Databricks Job) before it can diagnose a failure.
+- `databricks-materialization-policy`'s Unity Catalog naming and Liquid Clustering guidance only
+  apply on Databricks — running locally, skip straight to the view/table/incremental decision and
+  drop the UC-naming step.
+- `migration-validation`'s Tier 2 and its `references/authentication.md` (Databricks Workflows dbt
+  task / OAuth) assume a Databricks target; running locally, Tier 2 still applies but that
+  reference doesn't.
+
+Do not ask this per-flow or per-skill — ask it once per session/engagement and carry the answer
+through every downstream skill's hand-off. If the user already stated it (e.g. "run this against
+e2-demo-field-eng"), don't ask again, just proceed.
+
+**Do not** separately ask whether to dispatch each pipeline step as a subagent or run it inline —
+that's not a per-session judgment call, it's a fixed default (see "Dispatch model" below).
+
+## Dispatch model: subagents by default
+
+Every step in this pipeline (`domo-ingestion` through `dbt-project-optimization`) runs as its own
+subagent dispatch by default, not inline in the main conversation. This is a fixed policy, not a
+question to ask the user each time: a single flow migration can touch 150+ models across 6-8
+sequential stages, and running each stage inline burns the main context on intermediate JSON/SQL
+that the next stage doesn't need — only each stage's hand-off summary does. Dispatch keeps the main
+thread free to track pipeline state (which `<HARD-GATE>` was satisfied, what the next step is) while
+each subagent does the actual reading/generation/diffing for its one step.
+
+Only fall back to running a step inline when it's a small, single-shot check with no real work to
+delegate (e.g. re-reading one file to confirm a hand-off's prerequisite) — not as a default mode.
+
 ## Where to start
 
 - **New flow, never ingested**: start at `domo-ingestion`.
