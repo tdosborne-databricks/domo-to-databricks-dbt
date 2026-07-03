@@ -1,18 +1,18 @@
 # domo-to-databricks-dbt
 
 A cross-tool **agent-skills marketplace** that migrates **Domo Magic ETL dataflows** to **dbt on
-Databricks** — an agent that ingests a Domo export, transpiles the tile DAG to Spark SQL, structures
-and tests a dbt project, chooses materializations, validates in tiers, and deploys the models as
-scheduled Databricks Jobs.
+Databricks** — ingest a Domo export, transpile the tile DAG to Spark SQL, scaffold and test a dbt
+project, apply materialization policy, validate in tiers, and deploy as a Workflows **dbt task**.
 
 This is a **decompilation** problem, not a syntax conversion: Magic ETL logic lives in serialized
-GUI state, and an optimal migration exploits the dbt/Databricks paradigm rather than mechanically
-porting tiles. See `plugins/domo-to-databricks-dbt/skills/tile-translation/references/paradigm.md`.
+GUI state. A good migration exploits the dbt/Databricks paradigm rather than mechanically porting
+tiles. Start at
+`plugins/domo-to-databricks-dbt/skills/tile-translation/references/paradigm.md`.
 
 ## Install
 
-This repo is a plugin marketplace containing one plugin (`domo-to-databricks-dbt`). The skills are plain
-`SKILL.md` files, so they work across agent tools:
+This repo is a plugin marketplace containing one plugin (`domo-to-databricks-dbt`). Skills are plain
+`SKILL.md` files and work across agent tools:
 
 ```bash
 # Claude Code
@@ -21,94 +21,106 @@ claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
 ```
 
 Cursor, Codex/CLI agents, and GitHub Copilot read the mirrored manifests in `.cursor-plugin/`,
-`.agents/plugins/`, and `.github/plugin/`. Any tool without a plugin system can read the
-`SKILL.md` files under `plugins/domo-to-databricks-dbt/skills/` directly — they are self-contained. See
-`AGENTS.md`.
+`.agents/plugins/`, and `.github/plugin/`. Tools without a plugin system can read
+`plugins/domo-to-databricks-dbt/skills/` directly. See `AGENTS.md`.
 
 ### Repo layout
 
 ```
-.claude-plugin/marketplace.json     # + .cursor-plugin/, .agents/plugins/, .github/plugin/ (mirrors)
+.claude-plugin/marketplace.json     # + .cursor-plugin/, .agents/plugins/, .github/plugin/
 AGENTS.md                           # cross-tool entrypoint
 plugins/domo-to-databricks-dbt/
   .claude-plugin/plugin.json
-  skills/                           # the 5 skills (SKILL.md + references/ + scripts/)
+  skills/                           # 8 skills (SKILL.md + references/ + scripts/)
+  tests/                            # pipeline integration tests
 ```
 
-## Architecture: two skill families
+## Fixed pipeline (run in this order)
 
-**Custom skills (this plugin)** — everything Domo-specific:
+Start every migration with **`using-domo-to-databricks-dbt`** — it sets target (local vs Databricks),
+workspace isolation, and subagent dispatch.
+
+```
+domo-ingestion → tile-translation → org-dbt-conventions
+  → databricks-materialization-policy (Phase A: apply)
+  → dbt-error-triage (first dbt build)
+  → migration-validation (Tier 1 → Tier 2 → Tier 3)
+  → (optional) dbt-project-optimization
+```
 
 | Skill | Role |
 |---|---|
-| `domo-ingestion` | Ingest the customer export (or live Domo API) → normalized flow graph + inventory + completeness check. **Run first.** |
-| `tile-translation` | Transpile the tile DAG → Spark SQL CTEs; rewrite Beast Mode/MySQL dialect; flag untranslatable tiles. |
-| `org-dbt-conventions` | Overlay on the official `dbt` skill: layering, naming, split/dedupe rules, tests, scaffolding. |
-| `databricks-materialization-policy` | Overlay on the official `databricks` skills: view/table/incremental, clustering, UC naming. |
-| `migration-validation` | Tiered validation (static → build → customer data-diff) + per-flow audit log. |
+| `using-domo-to-databricks-dbt` | Entry point: target, isolation, dispatch model. **Always first.** |
+| `domo-ingestion` | Export or live API → normalized flow graph + inventory. |
+| `tile-translation` | Tile DAG → Spark SQL CTEs; Beast Mode/MySQL dialect; `-- TODO` flags. |
+| `org-dbt-conventions` | Layering, naming, scaffold (`sources.yml`, models, tests). |
+| `databricks-materialization-policy` | **Apply** view/table defaults (`apply_materialization.py`); propose clustering/incremental (Phase B). |
+| `dbt-error-triage` | Drive `dbt build` to green; promote fixes to converter (`known-patterns.md`). |
+| `migration-validation` | Tier 1 static → Tier 2 build → Tier 3 customer diff kit. |
+| `dbt-project-optimization` | Post-migration cleanup (inline, rename) after correctness is proven. |
 
-**Official skills** — the target platform's best practices. `plugin.json` declares these as plugin
-dependencies (`dbt`, `dbt-migration` from `dbt-agent-marketplace`; `databricks` from
-`databricks-agent-skills`), so `claude plugin install domo-to-databricks-dbt@...` resolves and
-installs all three automatically — no separate step needed. `marketplace.json` allowlists both
-marketplaces via `allowCrossMarketplaceDependenciesOn` since they're not this repo's own. If a
-dependency's marketplace isn't already configured in your Claude Code install, add it once and
-`/reload-plugins` picks up the rest:
+**Official skill overlays** (declared in `plugin.json`): `dbt`, `dbt-migration`, `databricks`.
+Install marketplaces once if needed:
 
 ```bash
 claude plugin marketplace add dbt-labs/dbt-agent-skills
 claude plugin marketplace add databricks/databricks-agent-skills
 ```
 
-(Cursor, Codex/CLI, and Copilot don't share Claude Code's dependency resolution — installing the
-mirrored manifests for those tools still means installing the official dbt/databricks skills by
-hand.)
+Prefer skills + the `dbt` CLI over the dbt MCP server for batch runs.
 
-The custom overlays contain only the **deltas** (our conventions, our tolerances) and defer to the
-official skills for general dbt/Databricks work — e.g. `databricks-dabs`/`databricks-jobs` govern
-the Asset Bundle + dbt-task jobs, and `dbt` governs model structure and testing.
+## Unity Catalog layout
 
-**Execution feedback:** prefer skills + the `dbt` CLI over the dbt MCP server for batch runs (MCP
-tool schemas inflate token cost ~30x at scale). MCP is optional for interactive debugging only.
+Generated projects use **three schemas** so raw sources don't mix with marts in the catalog UI:
 
-## End-to-end workflow (per migration batch)
+| Role | UC schema | Wired by |
+|------|-----------|----------|
+| Raw sources | `{project}_dbt_src` | `overrides.json` → `sources.yml` |
+| Staging + intermediate | `{project}_dbt` | `profiles.yml` / dbt task `schema` |
+| Marts (Domo outputs) | `{project}_dbt_marts` | `dbt_project.yml` `marts: +schema: marts` |
 
-1. **Ingest** the customer export (`domo-ingestion`) → normalize, inventory, flag incomplete flows.
-2. **Order** flows topologically so upstream models exist before `ref()` targets.
-3. **Per flow**: transpile → CTEs (`tile-translation`); agent resolves `-- TODO` tiles; scaffold
-   models/sources/schema.yml (`org-dbt-conventions`, official `dbt`); **apply** materialization
-   defaults (`databricks-materialization-policy` Phase A + `dbt build`); triage to green
-   (`dbt-error-triage`); validate Tier 1, then Tier 2 (`migration-validation`); write the
-   migration log.
-4. **Deploy** as a Databricks Asset Bundle of dbt-task Jobs grouped by DAG layer/domain (official
-   `databricks-dabs`/`databricks-jobs`), schedules mapped from Domo where known.
-5. **Human review gate**, then **customer Tier 3 validation** (diff kit) → cutover sign-off.
+Land ingested tables in `*_src`. Point overrides at `main.<project>_dbt_src.<table>`.
 
-> **Operational note:** Claude under-triggers skills in headless/batch runs — batch prompts must
-> **explicitly name the skills to use** rather than relying on auto-triggering. Skill descriptions
-> here are written "pushy" (trigger phrases listed) for this reason.
+## End-to-end workflow
+
+1. **Ingest** (`domo-ingestion`) → flows, inventory, completeness report.
+2. **Per flow**: transpile (`tile-translation`); resolve `-- TODO` tiles; scaffold
+   (`org-dbt-conventions`); **apply** materialization Phase A (`apply_materialization.py` +
+   `dbt build`); triage to green (`dbt-error-triage`); Tier 1 + Tier 2 (`migration-validation`).
+3. **Deploy** as a Databricks Asset Bundle with a Workflows **dbt task** (recommended for
+   serverless/headless — auth is the job identity, no PAT). See
+   `migration-validation/references/authentication.md`.
+4. **Tier 3** customer data-diff (`customer_diff_kit/`) → cutover sign-off.
+5. **(Optional)** `dbt-project-optimization` after Tier 2/3 pass.
+
+> Batch prompts must **name skills explicitly** — agents under-trigger in headless runs.
 
 ## Requirements
 
-- Python 3.9+ (custom scripts use only the standard library).
-- The official dbt + databricks plugins (auto-installed as dependencies — see above).
-- `dbt-databricks` + a Databricks workspace / SQL warehouse to build and deploy.
+- Python 3.9+ (skill scripts use the standard library; converter tests use pytest).
+- Official dbt + databricks plugins (see above).
+- Databricks workspace + SQL warehouse (or Workflows dbt task) for Tier 2 builds.
 
-## Status
+## Tests
 
-**v2.0** restructures the original single-skill converter into the 5-skill migration-agent
-architecture and installs the official dbt/Databricks skills as overlays. The transpiler
-(all 14 tile types, dialect engine, 82 tests) is the engine under
-`plugins/domo-to-databricks-dbt/skills/tile-translation/scripts/converter/`.
+```bash
+cd plugins/domo-to-databricks-dbt
+python3 -m pytest tests/ skills/tile-translation/scripts/converter/tests/
+```
 
-**v2 granularity rewrite (done):** the transpiler now collapses tile chains into CTEs — a tile
-becomes its own model only if it's a boundary (source / sink / reuse point); every other tile
-inlines as a named CTE. On the real AppDirect flow this produces **70 models from 272 tiles**
-(29 staging + 22 intermediate + 19 marts) with full flow→model→tile traceability headers.
+**93 tests** (82 converter + 11 pipeline integration) as of v2.0.
 
-**All skill scripts implemented (done):** ingestion Mode A parser (`ingest_export.py`) and
-Mode B live extractor (`domo_api_client.py`, runs locally — no Databricks), org-conventions
-`scaffold.py`, `materialization_policy.py`, and the Tier-1 `static_validator.py` /
-`gen_dbt_tests.py` / `build_customer_diff_kit.py`. All exercised end-to-end against the real
-AppDirect export; **89 tests pass** (82 converter + 7 pipeline integration). Static validation
-parses all 70 generated models in the Databricks dialect via `sqlglot` (optional dep).
+## Status & known limitations
+
+**v2.0** — fixed hard-gate pipeline, converter learning loop, CTE granularity (tile chains collapse
+into models at source/sink/reuse boundaries), `apply_materialization.py` fan-out view/table split.
+
+**Validated on:** AppDirect export (~70 models / 272 tiles) and Advisor_Services_ETL flow 67
+(~153 models) on mock data — Tier 2 green via local `dbt build` and Workflows dbt task.
+
+**Expect human triage on hard flows:** raw SQL tiles, flow-inferred source schemas missing columns,
+`schemaModification2` join renames, and Domo-only computed fields not present on landed UC tables.
+`dbt-error-triage/references/known-patterns.md` tracks promoted vs ad-hoc fixes.
+
+**Tier 3** requires real Domo exports run through `customer_diff_kit/` — not automated without
+customer data access.

@@ -2,28 +2,29 @@
 
 Portable **agent skills** that migrate **Domo Magic ETL dataflows → dbt on Databricks**. This repo
 is a *marketplace* containing one plugin (`plugins/domo-to-databricks-dbt`) whose skills are plain
-`SKILL.md` + `references/` + `scripts/` — the format Claude Code, Cursor, Codex/CLI agents, and
-Databricks agents all read.
+`SKILL.md` + `references/` + `scripts/`.
 
-## The five skills (run in this order)
+## Entry point
 
-1. **`domo-ingestion`** — ingest the Domo export → normalized flow graph + inventory + completeness
-   check. **Always first.**
-2. **`tile-translation`** — transpile the tile DAG to Spark SQL, collapsing tile chains into CTEs
-   (a flow → a few models, not one model per tile). Deterministic transpiler + dialect engine.
-3. **`org-dbt-conventions`** — layer/name/test/scaffold the dbt project (overlay on the official
-   `dbt` skill).
-4. **`databricks-materialization-policy`** — apply view/table defaults before first build (Phase A);
-   propose clustering/incremental after Tier 2 (Phase B). Overlay on official `databricks` skills.
-5. **`dbt-error-triage`** — drive `dbt build` to green; converter learning loop.
-6. **`migration-validation`** — tiered validation (static → build → customer data-diff) + audit log.
+Start with **`using-domo-to-databricks-dbt`** — target selection, workspace isolation, subagent
+dispatch. Then run the fixed pipeline below.
 
-Each skill's `SKILL.md` lists its trigger phrases, workflow, and references. Start at
-`plugins/domo-to-databricks-dbt/skills/tile-translation/references/paradigm.md` for the conceptual foundation.
+## The eight skills (in order)
 
-## Companion official skills (recommended)
+1. **`using-domo-to-databricks-dbt`** — entry point; read before any other skill.
+2. **`domo-ingestion`** — Domo export or API → normalized flows + inventory.
+3. **`tile-translation`** — transpile tile DAG → Spark SQL CTEs (deterministic converter).
+4. **`org-dbt-conventions`** — scaffold dbt project; UC `*_src` / `*_dbt` / `*_marts` layout.
+5. **`databricks-materialization-policy`** — `apply_materialization.py` before first build; Phase B
+   proposals after Tier 2.
+6. **`dbt-error-triage`** — `dbt build` to green; learning loop via `known-patterns.md`.
+7. **`migration-validation`** — Tier 1 static → Tier 2 build → Tier 3 diff kit.
+8. **`dbt-project-optimization`** — optional post-migration cleanup (after correctness proven).
 
-The overlays defer to the official dbt + Databricks agent skills — install them alongside:
+Each skill's `SKILL.md` has a `<HARD-GATE>` with prerequisites and hand-off. Conceptual foundation:
+`plugins/domo-to-databricks-dbt/skills/tile-translation/references/paradigm.md`.
+
+## Companion official skills
 
 ```bash
 claude plugin marketplace add dbt-labs/dbt-agent-skills
@@ -35,26 +36,25 @@ claude plugin install databricks@databricks-agent-skills
 ## Install this plugin
 
 ```bash
-# Claude Code (or any tool reading .claude-plugin/marketplace.json)
 claude plugin marketplace add <this-repo>
 claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
 ```
 
-Cursor / Codex / GitHub Copilot read the mirrored manifests in `.cursor-plugin/`, `.agents/plugins/`,
-and `.github/plugin/` respectively. Tools without a plugin system can read the `SKILL.md` files
-directly — they are self-contained.
-
-## Operational note
-
-Agents under-trigger skills in headless/batch runs, so batch prompts should **name the skills to
-use explicitly**. Skill descriptions are written with trigger phrases for this reason.
+Cursor / Codex / Copilot: mirrored manifests in `.cursor-plugin/`, `.agents/plugins/`,
+`.github/plugin/`. Or read `SKILL.md` files directly.
 
 ## Developing
 
-The transpiler is a pure-stdlib Python package at
-`plugins/domo-to-databricks-dbt/skills/tile-translation/scripts/converter/`. Add tile mappers or dialect rules
-**test-first**:
-
 ```bash
-cd plugins/domo-to-databricks-dbt/skills/tile-translation/scripts/converter && python3 -m pytest
+cd plugins/domo-to-databricks-dbt
+python3 -m pytest tests/ skills/tile-translation/scripts/converter/tests/
 ```
+
+Transpiler package:
+`plugins/domo-to-databricks-dbt/skills/tile-translation/scripts/converter/`. Add tile mappers and
+dialect rules **test-first**.
+
+## Operational note
+
+Name skills explicitly in batch/headless prompts. Skill descriptions include trigger phrases for
+this reason.

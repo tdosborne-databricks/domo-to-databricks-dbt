@@ -45,18 +45,25 @@ pre-fix converter version if they're on an older plugin release, and the reasoni
 
 ---
 
-## PROMOTED — transitive view-chain re-analysis on Spark/Databricks
+## PROMOTED — intermediate view default + fan-out table promotion
 
-- **Signature**: after the CTE-depth-cap fix above, individual "intermediate" models that are
-  themselves chained (B reads A, C reads A) each independently re-triggered a full Catalyst
-  re-resolution of every upstream view's logical plan — cost still grew badly with chain depth even
-  though each model was now small.
-- **Root cause**: `project.py`'s `_MATERIALIZE` map defaulted the `intermediate` layer to `view`.
-  On Spark/Databricks, a view's `select *` is expanded and re-resolved from its full upstream
-  logical plan on every downstream read — it is not cached the way a table's fixed schema is.
-- **Decision: PROMOTED.** Changed `_MATERIALIZE["intermediate"]` from `view` to `table`. Confirmed
-  fix: worst-case model build time went from 442.91s to 4.74s with no other change.
-- **Status**: Fixed 2026-07-02.
+- **Signature**: all intermediates materialized as Delta tables (storage sprawl, slow iteration) or
+  deep view chains re-analyzing upstream plans on every read.
+- **Decision: PROMOTED (updated 2026-07).** Intermediates default to **`view`** in `dbt_project.yml`
+  and the converter. `apply_materialization.py` (Phase A) promotes fan-out ≥ 2 intermediates to
+  `table` (+ Delta column mapping). Marts always `table` in `{build_schema}_marts` via `+schema:
+  marts`.
+- **Status**: Current behavior. Supersedes the earlier "default intermediate to table" entry below
+  for new migrations.
+
+---
+
+## PROMOTED — transitive view-chain re-analysis on Spark/Databricks (historical)
+
+- **Signature**: chained intermediate views each re-resolved full upstream logical plans.
+- **First fix (2026-07-02):** defaulted all intermediates to `table` — worked but caused storage
+  sprawl.
+- **Current fix:** view default + fan-out table promotion via `apply_materialization.py` (see above).
 
 ---
 
@@ -65,11 +72,9 @@ pre-fix converter version if they're on an older plugin release, and the reasoni
 - **Signature**: `DELTA_INVALID_CHARACTERS_IN_COLUMN_NAMES` errors that did NOT exist before the
   view→table fix above — Domo columns routinely contain spaces/special characters that Spark SQL
   views tolerate freely but Delta's default physical format rejects.
-- **Decision: PROMOTED** (a direct, mechanical consequence of the prior fix, not a separate bug).
-  Added `+tblproperties: {'delta.columnMapping.mode': 'name', 'delta.minReaderVersion': '2',
-  'delta.minWriterVersion': '5'}` to the generated `dbt_project.yml` for the `intermediate` and
-  `marts` layers in `project.py`.
-- **Status**: Fixed 2026-07-02.
+- **Decision: PROMOTED** (a direct consequence of persisting intermediates/marts as tables).
+  Delta column mapping on `table` and `marts` layers in `dbt_project.yml` / per-model config.
+- **Status**: Fixed 2026-07-02; marts land in `{build_schema}_marts` via `+schema: marts`.
 
 ---
 
