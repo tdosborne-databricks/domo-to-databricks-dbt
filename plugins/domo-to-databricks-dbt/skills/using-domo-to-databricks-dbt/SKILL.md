@@ -5,7 +5,7 @@ description: >-
   other skill in this plugin. Establishes the fixed pipeline order and the entry point for each
   new flow or batch. Triggers on "migrate a Domo flow", "Domo to dbt", "Magic ETL migration",
   "convert Domo dataflow", or any request that touches `domo-ingestion`, `tile-translation`,
-  `org-dbt-conventions`, `dbt-error-triage`, `databricks-materialization-policy`,
+  `org-dbt-conventions`, `databricks-materialization-policy`, `dbt-error-triage`,
   `migration-validation`, or `dbt-project-optimization`.
 ---
 
@@ -14,12 +14,13 @@ description: >-
 <EXTREMELY-IMPORTANT>
 This plugin is a FIXED, ORDERED pipeline, not a menu of independent skills:
 
-  domo-ingestion → tile-translation → org-dbt-conventions → dbt-error-triage
-  → databricks-materialization-policy → migration-validation → (optional) dbt-project-optimization
+  domo-ingestion → tile-translation → org-dbt-conventions
+  → databricks-materialization-policy → dbt-error-triage → migration-validation
+  → (optional) dbt-project-optimization
 
 Each skill's own SKILL.md carries a `<HARD-GATE>` stating what must be true before it runs and
-which skill it hands off to next. Do not jump ahead (e.g. proposing materialization before the
-build is green) and do not skip a step because a flow "looks simple." Simple flows still hit
+which skill it hands off to next. Do not jump ahead (e.g. running triage before materialization
+defaults are applied, or proposing clustering before the build is green). Simple flows still hit
 converter bugs — that's the whole point of `dbt-error-triage` existing.
 
 The first six steps are about **migrating correctly**: faithful, traceable, provably equivalent to
@@ -55,13 +56,20 @@ e2-demo-field-eng"), don't ask again, just proceed.
 **Do not** separately ask whether to dispatch each pipeline step as a subagent or run it inline —
 that's not a per-session judgment call, it's a fixed default (see "Dispatch model" below).
 
-## Set up an isolated workspace before domo-ingestion runs
+## Set up a workspace before domo-ingestion runs — but ask first, don't assume
 
-Regardless of the local-vs-Databricks answer, every migration needs its own clean directory (or
-workspace path) — never reuse a scratch directory left over from a previous flow or a previous
-session, and never scaffold into a directory that already has unrelated files in it.
-`org-dbt-conventions`'s `scaffold.py` writes into whatever `<dbt_project_dir>` it's given; nothing
-downstream checks that directory was actually meant for this flow, so this has to happen first.
+Before creating anything, ask: **does the customer already have a dbt project/repo they want this
+migration added into, with their own conventions — or should we scaffold a fresh one?** Don't
+default to scaffolding from scratch just because that's this plugin's default path; a customer with
+an existing repo, package pins, lint config, and environment list has already made those decisions,
+and building a parallel structure next to (or worse, on top of) theirs creates exactly the kind of
+mess this section exists to prevent.
+
+**No existing project — scaffold fresh (this plugin's default):**
+
+Every migration still needs its own clean directory (or workspace path) — never reuse a scratch
+directory left over from a previous flow or session, and never scaffold into a directory that
+already has unrelated files in it.
 
 - **Local target**:
   ```bash
@@ -78,6 +86,18 @@ downstream checks that directory was actually meant for this flow, so this has t
   like `main.domo_migration` reused across customers). See
   `references/isolated-workspace-setup.md` for the concrete bundle-naming and Unity-Catalog-schema
   conventions and why `mode: development` isolation isn't enough on its own for the data side.
+
+**Existing project — integrate, don't scaffold:**
+
+Skip `init_migration_workspace.py` entirely; it exists to build a fresh structure, which isn't what
+this branch needs. Point `org-dbt-conventions`'s `<dbt_project_dir>` straight at the customer's
+existing dbt project root. `scaffold.py` already only writes `packages.yml`/`profiles.yml`/
+`.sqlfluff`/`README.md` if one doesn't already exist there (never `--overwrite-org-files` here
+unless the customer explicitly asks for it) — model files, `dbt_project.yml`'s layer config,
+`sources.yml`, and `schema.yml` still regenerate normally, since those are migration output, not a
+convention. `domo-ingestion`'s raw output (`flows/<id>.json`, `inventory.csv`) doesn't need to live
+inside the customer's repo at all — a throwaway local directory is fine, since nothing downstream
+reads it after `org-dbt-conventions` runs.
 
 ## Dispatch model: subagents by default
 
@@ -97,8 +117,8 @@ delegate (e.g. re-reading one file to confirm a hand-off's prerequisite) — not
 - **New flow, never ingested**: start at `domo-ingestion`.
 - **Already have `flows/<id>.json` + `inventory.csv`**: start at `tile-translation`.
 - **Already have generated dbt models, not yet scaffolded**: start at `org-dbt-conventions`.
-- **Scaffolded project, `dbt build` not yet green**: start at `dbt-error-triage`.
-- **Build is green, materialization not yet reviewed**: start at `databricks-materialization-policy`.
+- **Scaffolded, materialization not yet applied**: start at `databricks-materialization-policy`.
+- **Materialization applied, `dbt build` not yet green**: start at `dbt-error-triage`.
 - **Ready for sign-off / audit log**: start at `migration-validation`.
 - **Migrated, validated, and being kept long-term — too many models, raw column names, pointless
   staging passthroughs**: start at `dbt-project-optimization` (optional, only after Tier 2).

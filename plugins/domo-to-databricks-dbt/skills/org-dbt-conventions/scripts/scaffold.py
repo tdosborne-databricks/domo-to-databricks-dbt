@@ -2,17 +2,23 @@
 """Scaffolding generator for the migrated dbt project.
 
 Usage:
-    python3 scaffold.py <flows_dir> <dbt_project_dir> [overrides.json]
+    python3 scaffold.py <flows_dir> <dbt_project_dir> [overrides.json] [source_columns.json]
+                        [--overwrite-org-files]
 
 <flows_dir>   directory of normalized flows from domo-ingestion (contains flows/*.json),
               or a single normalized flow .json file.
 <overrides>   optional {dataset_id|name: "catalog.schema.table"} to wire LoadFromVault
               tiles onto real Unity Catalog tables (see references/conventions.md).
+--overwrite-org-files   replace packages.yml/profiles.yml/.sqlfluff/README.md even if the
+              customer already has their own at <dbt_project_dir>. Omit this by default —
+              those four files encode team conventions, not migration output; if the customer
+              already has one, that's a preference, not a gap to fill.
 
 Reuses the validated emitters in tile-translation/scripts/converter/domo_to_dbt
 (sources.py -> sources.yml + UC-table resolution; project.py -> model files,
 dbt_project.yml, layering, ref()-rewiring) rather than reimplementing them, then adds the
-org-standard project files (packages.yml, profiles template, .sqlfluff, README).
+org-standard project files (packages.yml, profiles template, .sqlfluff, README) only where the
+customer doesn't already have their own.
 
 One flow -> one project at <dbt_project_dir>. Multiple flows -> one subproject per flow
 (<dbt_project_dir>/<flow>) to avoid the shared-root overwrite the raw converter warns about.
@@ -116,19 +122,34 @@ def _project_readme(project_name, flow_name, n_models, n_sources):
     )
 
 
-def _write_org_files(out_dir, project_name, result, flow_name):
-    with open(os.path.join(out_dir, "packages.yml"), "w") as fh:
-        fh.write(_PACKAGES_YML)
-    with open(os.path.join(out_dir, "profiles.yml"), "w") as fh:
-        fh.write(_profiles_yml(project_name))
-    with open(os.path.join(out_dir, ".sqlfluff"), "w") as fh:
-        fh.write(_SQLFLUFF)
-    with open(os.path.join(out_dir, "README.md"), "w") as fh:
-        fh.write(_project_readme(project_name, flow_name,
-                                 len(result["models"]), len(result["sources"])))
+def _write_org_files(out_dir, project_name, result, flow_name, overwrite=False):
+    """Write org-standard scaffolding files, but never clobber a customer's own conventions.
+
+    These four files (packages.yml, profiles.yml, .sqlfluff, README.md) encode team/org
+    preferences, not migration output — if the customer already has one (their own package
+    pins, their own lint config, their own environment list in profiles.yml), that's a signal
+    they have a preference and we should leave it alone. Only `overwrite=True` (an explicit,
+    deliberate choice, never the default) replaces an existing file.
+    """
+    candidates = {
+        "packages.yml": _PACKAGES_YML,
+        "profiles.yml": _profiles_yml(project_name),
+        ".sqlfluff": _SQLFLUFF,
+        "README.md": _project_readme(project_name, flow_name,
+                                      len(result["models"]), len(result["sources"])),
+    }
+    for filename, content in candidates.items():
+        path = os.path.join(out_dir, filename)
+        if os.path.exists(path) and not overwrite:
+            print(f"  skipping {filename}: already exists, treating as the customer's own "
+                  f"convention (pass --overwrite-org-files to replace it deliberately)")
+            continue
+        with open(path, "w") as fh:
+            fh.write(content)
 
 
-def scaffold(flows_dir, dbt_project_dir, overrides=None, source_columns=None):
+def scaffold(flows_dir, dbt_project_dir, overrides=None, source_columns=None,
+             overwrite_org_files=False):
     flows = _load_flows(flows_dir)
     multi = len(flows) > 1
     written = []
@@ -139,7 +160,8 @@ def scaffold(flows_dir, dbt_project_dir, overrides=None, source_columns=None):
         project_name = _sanitize(raw.get("name") or raw.get("id") or "domo_dbt_project")
         out_dir = os.path.join(dbt_project_dir, project_name) if multi else dbt_project_dir
         write_dbt_project(result, out_dir, project_name=project_name)
-        _write_org_files(out_dir, project_name, result, raw.get("name"))
+        _write_org_files(out_dir, project_name, result, raw.get("name"),
+                          overwrite=overwrite_org_files)
         review = [m for m in result["models"] if m.get("needs_review")]
         print(f"  {project_name}: {len(result['models'])} models, "
               f"{len(result['sources'])} sources, {len(review)} need review -> {out_dir}")
@@ -148,13 +170,18 @@ def scaffold(flows_dir, dbt_project_dir, overrides=None, source_columns=None):
 
 
 def main():
-    if len(sys.argv) < 3:
+    args = sys.argv[1:]
+    overwrite_org_files = "--overwrite-org-files" in args
+    args = [a for a in args if a != "--overwrite-org-files"]
+    if len(args) < 2:
         sys.exit(__doc__)
-    overrides = json.load(open(sys.argv[3])) if len(sys.argv) > 3 else None
-    # optional 5th arg: {dataset_id|source_name: [column, ...]} to seed column lineage so
-    # formula/join tiles EXCEPT recomputed/colliding columns (see converter source_columns).
-    source_columns = json.load(open(sys.argv[4])) if len(sys.argv) > 4 else None
-    scaffold(sys.argv[1], sys.argv[2], overrides, source_columns=source_columns)
+    overrides = json.load(open(args[2])) if len(args) > 2 else None
+    # optional 4th positional arg: {dataset_id|source_name: [column, ...]} to seed column
+    # lineage so formula/join tiles EXCEPT recomputed/colliding columns (see converter
+    # source_columns).
+    source_columns = json.load(open(args[3])) if len(args) > 3 else None
+    scaffold(args[0], args[1], overrides, source_columns=source_columns,
+             overwrite_org_files=overwrite_org_files)
 
 
 if __name__ == "__main__":

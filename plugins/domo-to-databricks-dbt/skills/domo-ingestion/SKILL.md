@@ -20,7 +20,7 @@ graph — they only read `flows/<flow_id>.json` + `inventory.csv`.
 
 <HARD-GATE>
 This is the entry point of the fixed migration pipeline: domo-ingestion → tile-translation →
-org-dbt-conventions → dbt-error-triage → databricks-materialization-policy → migration-validation.
+org-dbt-conventions → databricks-materialization-policy → dbt-error-triage → migration-validation.
 Do not skip ahead to tile-translation until `inventory.csv` and `completeness_report.json` exist
 for the flow(s) being migrated. If the completeness report flags missing schedules/schemas/row
 counts, surface that to the user before proceeding — don't silently transpile against gaps.

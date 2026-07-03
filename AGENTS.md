@@ -13,9 +13,10 @@ Databricks agents all read.
    (a flow → a few models, not one model per tile). Deterministic transpiler + dialect engine.
 3. **`org-dbt-conventions`** — layer/name/test/scaffold the dbt project (overlay on the official
    `dbt` skill).
-4. **`databricks-materialization-policy`** — view/table/incremental + clustering + UC naming
-   (overlay on the official `databricks` skills).
-5. **`migration-validation`** — tiered validation (static → build → customer data-diff) + audit log.
+4. **`databricks-materialization-policy`** — apply view/table defaults before first build (Phase A);
+   propose clustering/incremental after Tier 2 (Phase B). Overlay on official `databricks` skills.
+5. **`dbt-error-triage`** — drive `dbt build` to green; converter learning loop.
+6. **`migration-validation`** — tiered validation (static → build → customer data-diff) + audit log.
 
 Each skill's `SKILL.md` lists its trigger phrases, workflow, and references. Start at
 `plugins/domo-to-databricks-dbt/skills/tile-translation/references/paradigm.md` for the conceptual foundation.

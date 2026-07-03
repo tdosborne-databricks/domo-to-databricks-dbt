@@ -76,9 +76,10 @@ tool schemas inflate token cost ~30x at scale). MCP is optional for interactive 
 1. **Ingest** the customer export (`domo-ingestion`) → normalize, inventory, flag incomplete flows.
 2. **Order** flows topologically so upstream models exist before `ref()` targets.
 3. **Per flow**: transpile → CTEs (`tile-translation`); agent resolves `-- TODO` tiles; scaffold
-   models/sources/schema.yml (`org-dbt-conventions`, official `dbt`); apply materialization
-   (`databricks-materialization-policy`); validate Tier 1, then Tier 2 `dbt build` if a workspace
-   is available (max 3 auto-fix iterations, else escalate); write the migration log.
+   models/sources/schema.yml (`org-dbt-conventions`, official `dbt`); **apply** materialization
+   defaults (`databricks-materialization-policy` Phase A + `dbt build`); triage to green
+   (`dbt-error-triage`); validate Tier 1, then Tier 2 (`migration-validation`); write the
+   migration log.
 4. **Deploy** as a Databricks Asset Bundle of dbt-task Jobs grouped by DAG layer/domain (official
    `databricks-dabs`/`databricks-jobs`), schedules mapped from Domo where known.
 5. **Human review gate**, then **customer Tier 3 validation** (diff kit) → cutover sign-off.

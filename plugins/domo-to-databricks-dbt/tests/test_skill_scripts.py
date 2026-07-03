@@ -30,6 +30,7 @@ def _script(skill, fname):
 ingest = _load(_script("domo-ingestion", "ingest_export.py"), "ingest_export")
 scaffold = _load(_script("org-dbt-conventions", "scaffold.py"), "scaffold")
 matpol = _load(_script("databricks-materialization-policy", "materialization_policy.py"), "matpol")
+applymat = _load(_script("databricks-materialization-policy", "apply_materialization.py"), "applymat")
 statval = _load(_script("migration-validation", "static_validator.py"), "static_validator")
 gentests = _load(_script("migration-validation", "gen_dbt_tests.py"), "gen_dbt_tests")
 diffkit = _load(_script("migration-validation", "build_customer_diff_kit.py"), "diffkit")
@@ -99,6 +100,21 @@ def test_materialization_marks_output_table(pipeline):
     assert proposal[summary]["materialized"] == "table"
     assert matpol._sanitize("Orders")  # staging views present
     assert proposal[matpol._sanitize("Orders")]["materialized"] == "view"
+
+
+def test_apply_materialization_fanout(pipeline):
+    proj = pipeline["proj"]
+    # Bump int_join fan-out to 2 so apply promotes it to table.
+    (proj / "models" / "marts" / "orders_alt.sql").write_text(
+        "{{ config(materialized='table') }}\nselect * from {{ ref('int_join') }}\n"
+    )
+    result = applymat.apply(str(proj))
+    yml = (proj / "dbt_project.yml").read_text()
+    assert "intermediate: {+materialized: view}" in yml
+    join_sql = (proj / "models" / "intermediate" / "int_join.sql").read_text()
+    assert "materialized='table'" in join_sql
+    assert "delta.columnMapping.mode" in join_sql
+    assert result["promoted_to_table"] == ["int_join"]
 
 
 def test_gen_dbt_tests_grain(pipeline):

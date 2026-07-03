@@ -1,7 +1,7 @@
 {
   "name": "domo-to-databricks-dbt",
   "version": "2.0.0",
-  "description": "Domo Magic ETL to dbt on Databricks migration agent. Eight skills forming a fixed pipeline: domo-ingestion, tile-translation, org-dbt-conventions, dbt-error-triage, databricks-materialization-policy, migration-validation, and optional dbt-project-optimization, entered via using-domo-to-databricks-dbt. Transpiles Domo dataflows into a runnable, tested, DAG-orchestrated dbt-databricks project, with a build-failure learning loop and official dbt/databricks skill overlays.",
+  "description": "Domo Magic ETL to dbt on Databricks migration agent. Eight skills forming a fixed pipeline: domo-ingestion, tile-translation, org-dbt-conventions, databricks-materialization-policy, dbt-error-triage, migration-validation, and optional dbt-project-optimization, entered via using-domo-to-databricks-dbt. Transpiles Domo dataflows into a runnable, tested, DAG-orchestrated dbt-databricks project, with a build-failure learning loop and official dbt/databricks skill overlays.",
   "author": {
     "name": "Trevor Osborne",
     "email": "trevor.osborne@databricks.com"

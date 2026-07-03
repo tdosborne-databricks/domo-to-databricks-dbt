@@ -82,6 +82,10 @@ prove it *stayed* established.
    per-project whether to keep as an indirection point or drop; (c) columns whose raw Domo name
    (spaces, mixed case) has no `` `backtick-quoted` `` collision risk if normalized to snake_case.
 
+   **Note:** fan-out view/table split on intermediates is handled in
+   `databricks-materialization-policy` (`apply_materialization.py`) before the first build — do not
+   repeat that work here unless inlining models changes the fan-out graph.
+
 3. **Apply one class of change at a time.** Inline flagged intermediate models, or normalize a
    batch of column names, or resolve one staging model's fate — not all three at once.
 

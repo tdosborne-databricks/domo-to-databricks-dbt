@@ -7,9 +7,9 @@ description: >-
   and regenerate) or a flow-specific data quirk (patch the generated model file locally, log it,
   move on). Defers to the official `using-dbt-for-analytics-engineering` skill (whose
   `references/debugging-dbt-errors.md` covers the diagnosis mechanics) and `troubleshooting-dbt-job-errors`
-  for Databricks Job runs. Triggers on "dbt build failed", "unresolved column",
+  for Databricks Job runs.   Triggers on "dbt build failed", "unresolved column",
   "materialization error", "triage dbt errors", "converter bug vs ad-hoc patch". Run AFTER
-  org-dbt-conventions, BEFORE databricks-materialization-policy.
+  databricks-materialization-policy, BEFORE migration-validation.
 ---
 
 # dbt Error Triage (deterministic build loop; the converter learns from what it patches)
@@ -21,12 +21,14 @@ The core discipline is **never patch the same root cause twice** — if a patter
 in the converter, not in another hand-edited `.sql` file.
 
 <HARD-GATE>
-Step 4 of the fixed pipeline (domo-ingestion → tile-translation → org-dbt-conventions →
-**dbt-error-triage** → databricks-materialization-policy → migration-validation). Do not hand off
-to `databricks-materialization-policy` until `dbt build` exits clean (0 errors) for the full
-project. Do not silently patch generated `.sql` files without first checking whether the failure
-clusters with a prior pattern in `references/known-patterns.md` — a second occurrence of the same
-signature is a converter bug by definition, not a coincidence.
+Step 5 of the fixed pipeline (domo-ingestion → tile-translation → org-dbt-conventions →
+databricks-materialization-policy → **dbt-error-triage** → migration-validation). Requires
+`databricks-materialization-policy` Phase A to have run (`apply_materialization.py`) so the first
+build uses view/table defaults — not 100+ intermediate Delta tables. Do not hand off to
+`migration-validation` until `dbt build` exits clean (0 errors) for the full project. Do not
+silently patch generated `.sql` files without first checking whether the failure clusters with a
+prior pattern in `references/known-patterns.md` — a second occurrence of the same signature is a
+converter bug by definition, not a coincidence.
 </HARD-GATE>
 
 ## Workflow
@@ -63,7 +65,8 @@ signature is a converter bug by definition, not a coincidence.
    so a *future* recurrence gets recognized as a pattern.
 6. **Loop.** Re-run `dbt build`. Cap at 5 iterations of promote/patch-and-rebuild; if still red,
    escalate to the human queue rather than continuing to guess.
-7. Hand off to `databricks-materialization-policy`.
+7. Hand off to `migration-validation` once the build is green. Optional: re-run
+   `databricks-materialization-policy` Phase B (clustering/incremental) after Tier 2.
 
 ## References
 

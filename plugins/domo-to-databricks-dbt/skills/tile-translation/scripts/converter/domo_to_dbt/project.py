@@ -20,7 +20,7 @@ from .lineage import produced_columns
 from .tiles import render_tile
 from .sources import resolve_sources, source_ref
 
-_MATERIALIZE = {"staging": "view", "intermediate": "table", "marts": "table"}
+_MATERIALIZE = {"staging": "view", "intermediate": "view", "marts": "table"}
 # intermediate must be a table (not a view): Spark/Databricks re-resolves a view's
 # full upstream logical plan on every downstream read, so a serial chain of
 # intermediate views re-analyzes transitively and blows up superlinearly with
@@ -181,9 +181,7 @@ def _dbt_project_yml(project_name):
             "models:\n"
             f"  {project_name}:\n"
             "    staging: {+materialized: view}\n"
-            "    intermediate: {+materialized: table, +tblproperties: "
-            "{'delta.columnMapping.mode': 'name', 'delta.minReaderVersion': '2', "
-            "'delta.minWriterVersion': '5'}}\n"
+            "    intermediate: {+materialized: view}\n"
             "    marts: {+materialized: table, +tblproperties: "
             "{'delta.columnMapping.mode': 'name', 'delta.minReaderVersion': '2', "
             "'delta.minWriterVersion': '5'}}\n")

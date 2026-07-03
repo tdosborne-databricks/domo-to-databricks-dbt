@@ -17,7 +17,7 @@ records the **highest tier achieved** — that log is the audit trail deliverabl
 
 <HARD-GATE>
 Step 6 of the fixed pipeline (domo-ingestion → tile-translation → org-dbt-conventions →
-dbt-error-triage → databricks-materialization-policy → **migration-validation**). If Tier 2 fails
+databricks-materialization-policy → dbt-error-triage → **migration-validation**). If Tier 2 fails
 here, that means `dbt-error-triage` didn't actually reach green; go back to it rather than
 re-diagnosing from scratch.
 
