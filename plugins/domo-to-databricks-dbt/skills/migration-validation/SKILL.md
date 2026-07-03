@@ -16,10 +16,15 @@ We have **no direct access to Domo data**, so validation is tiered. Each flow's 
 records the **highest tier achieved** — that log is the audit trail deliverable.
 
 <HARD-GATE>
-Step 6 (final) of the fixed pipeline (domo-ingestion → tile-translation → org-dbt-conventions →
-dbt-error-triage → databricks-materialization-policy → **migration-validation**). This is the last
-step — there's no further hand-off. If Tier 2 fails here, that means `dbt-error-triage` didn't
-actually reach green; go back to it rather than re-diagnosing from scratch.
+Step 6 of the fixed pipeline (domo-ingestion → tile-translation → org-dbt-conventions →
+dbt-error-triage → databricks-materialization-policy → **migration-validation**). If Tier 2 fails
+here, that means `dbt-error-triage` didn't actually reach green; go back to it rather than
+re-diagnosing from scratch.
+
+This is the last **required** step for a migration that's just being cut over. If the project will
+be maintained long-term (not just left as-is post-cutover), hand off to `dbt-project-optimization`
+once Tier 2 is green — that step is optional and on request, never mandatory, but it's what turns
+the deliberately-faithful 1:1 migration output into something a team can actually own afterward.
 </HARD-GATE>
 
 ## The three tiers

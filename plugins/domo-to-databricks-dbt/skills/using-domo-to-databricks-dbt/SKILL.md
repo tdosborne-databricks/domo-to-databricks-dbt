@@ -5,8 +5,8 @@ description: >-
   other skill in this plugin. Establishes the fixed pipeline order and the entry point for each
   new flow or batch. Triggers on "migrate a Domo flow", "Domo to dbt", "Magic ETL migration",
   "convert Domo dataflow", or any request that touches `domo-ingestion`, `tile-translation`,
-  `org-dbt-conventions`, `dbt-error-triage`, `databricks-materialization-policy`, or
-  `migration-validation`.
+  `org-dbt-conventions`, `dbt-error-triage`, `databricks-materialization-policy`,
+  `migration-validation`, or `dbt-project-optimization`.
 ---
 
 # Using domo-to-databricks-dbt
@@ -15,12 +15,19 @@ description: >-
 This plugin is a FIXED, ORDERED pipeline, not a menu of independent skills:
 
   domo-ingestion → tile-translation → org-dbt-conventions → dbt-error-triage
-  → databricks-materialization-policy → migration-validation
+  → databricks-materialization-policy → migration-validation → (optional) dbt-project-optimization
 
 Each skill's own SKILL.md carries a `<HARD-GATE>` stating what must be true before it runs and
 which skill it hands off to next. Do not jump ahead (e.g. proposing materialization before the
 build is green) and do not skip a step because a flow "looks simple." Simple flows still hit
 converter bugs — that's the whole point of `dbt-error-triage` existing.
+
+The first six steps are about **migrating correctly**: faithful, traceable, provably equivalent to
+the Domo output. `dbt-project-optimization` is a separate, later concern — **making the result good
+to maintain** — and only makes sense once correctness is no longer in question. Never collapse
+these two goals into one pass: a converter optimized for readability from the start would be harder
+to validate against the Domo flow graph, and a "faithful" project left unoptimized forever
+accumulates hundreds of raw-passthrough models nobody wants to own.
 </EXTREMELY-IMPORTANT>
 
 ## Where to start
@@ -31,6 +38,8 @@ converter bugs — that's the whole point of `dbt-error-triage` existing.
 - **Scaffolded project, `dbt build` not yet green**: start at `dbt-error-triage`.
 - **Build is green, materialization not yet reviewed**: start at `databricks-materialization-policy`.
 - **Ready for sign-off / audit log**: start at `migration-validation`.
+- **Migrated, validated, and being kept long-term — too many models, raw column names, pointless
+  staging passthroughs**: start at `dbt-project-optimization` (optional, only after Tier 2).
 
 ## The core concept: deterministic converter + adaptive learning loop
 
