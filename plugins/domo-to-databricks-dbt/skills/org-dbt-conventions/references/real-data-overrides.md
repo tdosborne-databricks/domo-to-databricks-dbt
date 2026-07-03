@@ -15,11 +15,15 @@ are present.
 
 ```json
 {
-  "061e91e3-18ee-4051-a503-9f4390015496": "main.appdirect_raw.asm_portal_slas",
-  "Monthly Advisor Log": "main.appdirect_raw.monthly_advisor_log",
-  "advisor_orders": "main.appdirect_raw.advisor_orders"
+  "061e91e3-18ee-4051-a503-9f4390015496": "main.my_flow_dbt_src.asm_portal_slas",
+  "Monthly Advisor Log": "main.my_flow_dbt_src.monthly_advisor_log",
+  "advisor_orders": "main.my_flow_dbt_src.advisor_orders"
 }
 ```
+
+Land raw tables in the **`*_src`** schema (`{project}_dbt_src`). dbt builds staging/intermediate
+under `{project}_dbt` and marts under `{project}_dbt_marts` — do not land sources in the build
+schema or marts schema.
 
 ## Run
 

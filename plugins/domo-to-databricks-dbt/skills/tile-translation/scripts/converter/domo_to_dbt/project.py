@@ -29,6 +29,21 @@ _LAYER_PREFIX = {"staging": "stg_", "intermediate": "int_", "marts": ""}
 _REF_RE = re.compile(r"\{\{\s*ref\('([^']+)'\)\s*\}\}")
 
 
+def build_schema_name(project_name: str) -> str:
+    """UC schema for staging + intermediate dbt models (profiles.yml ``schema``)."""
+    return f"{project_name}_dbt"
+
+
+def source_schema_name(build_schema: str) -> str:
+    """UC schema for raw landed source tables (``sources.yml`` + overrides)."""
+    return f"{build_schema}_src"
+
+
+def marts_schema_suffix() -> str:
+    """dbt ``+schema`` custom suffix → ``{build_schema}_marts`` (default ``generate_schema_name``)."""
+    return "marts"
+
+
 def _out_degree(actions):
     outdeg = {}
     for a in actions:
@@ -182,12 +197,12 @@ def _dbt_project_yml(project_name):
             f"  {project_name}:\n"
             "    staging: {+materialized: view}\n"
             "    intermediate: {+materialized: view}\n"
-            "    marts: {+materialized: table, +tblproperties: "
+            "    marts: {+materialized: table, +schema: marts, +tblproperties: "
             "{'delta.columnMapping.mode': 'name', 'delta.minReaderVersion': '2', "
             "'delta.minWriterVersion': '5'}}\n")
 
 
-def _sources_yml(sources):
+def _sources_yml(sources, catalog="main", build_schema=None):
     # dbt honors `database`/`schema` only at the SOURCE level; at the table level only
     # `identifier` is honored (a table-level `schema`/`database` is silently ignored and dbt
     # falls back to the source name as the schema). All models here reference a single source
@@ -210,6 +225,9 @@ def _sources_yml(sources):
         (dom_catalog, dom_schema), _ = counts.most_common(1)[0]
         lines.append(f"    database: {dom_catalog}")
         lines.append(f"    schema: {dom_schema}")
+    elif build_schema:
+        lines.append(f"    database: {catalog}")
+        lines.append(f"    schema: {source_schema_name(build_schema)}")
     lines.append("    tables:")
 
     for s in sources:
@@ -222,6 +240,9 @@ def _sources_yml(sources):
                 lines.append(f"        # WARNING: override targets {catalog}.{schema}, but dbt sources "
                              f"take one schema at the source level ({dom_catalog}.{dom_schema}); "
                              f"land this table in {dom_schema} or give it its own source block.")
+            elif build_schema and schema == build_schema:
+                lines.append(f"        # WARNING: source table is in the dbt build schema ({schema}); "
+                             f"prefer landing raw data in {source_schema_name(build_schema)}")
         elif ct:
             lines.append(f"        # unresolved override (expected catalog.schema.table): {ct}")
         else:
@@ -245,7 +266,7 @@ def write_dbt_project(result, out_dir, project_name="domo_dbt_project"):
     for layer in ("staging", "intermediate", "marts"):
         os.makedirs(os.path.join(models_dir, layer), exist_ok=True)
     with open(os.path.join(models_dir, "sources.yml"), "w") as fh:
-        fh.write(_sources_yml(result["sources"]))
+        fh.write(_sources_yml(result["sources"], build_schema=build_schema_name(project_name)))
     flow_name = result["report"].get("flow") or "unknown"
     for m in result["models"]:
         materialized = _MATERIALIZE[m["layer"]]

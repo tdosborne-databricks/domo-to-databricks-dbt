@@ -1,6 +1,6 @@
 # tests/test_project.py
 import os
-from domo_to_dbt.project import convert_flow_to_dbt, write_dbt_project
+from domo_to_dbt.project import convert_flow_to_dbt, write_dbt_project, build_schema_name, source_schema_name
 
 FLOW = {"name": "Advisor_Services_ETL", "id": 67, "actions": [
     {"id": "L", "type": "LoadFromVault", "name": "Load Orders", "dataSourceId": "7"},
@@ -96,3 +96,17 @@ def test_write_creates_project_files(tmp_path):
     assert staged and marts
     # staging model carries a config materialized line
     assert "materialized='view'" in staged[0].read_text()
+
+
+def test_dbt_project_marts_use_separate_schema(tmp_path):
+    res = convert_flow_to_dbt(FLOW, MAPPING, {})
+    write_dbt_project(res, str(tmp_path), project_name="advisor_services_etl")
+    yml = (tmp_path / "dbt_project.yml").read_text()
+    assert "+schema: marts" in yml
+
+
+def test_sources_yml_default_source_schema_without_overrides(tmp_path):
+    res = convert_flow_to_dbt(FLOW, MAPPING, {})
+    write_dbt_project(res, str(tmp_path), project_name="advisor_services_etl")
+    sources = (tmp_path / "models" / "sources.yml").read_text()
+    assert f"schema: {source_schema_name(build_schema_name('advisor_services_etl'))}" in sources

@@ -118,6 +118,15 @@ def _flow_has_append(by_id):
     return any(t.get("type") in APPEND_TILES for t in by_id.values())
 
 
+def _unity_catalog_name(catalog, build_schema, name, tile_type, is_output):
+    """Match dbt UC layout: sources in ``{build}_src``, marts in ``{build}_marts``, else ``{build}``."""
+    if tile_type in LOAD_TILES:
+        return f"{catalog}.{build_schema}_src.{name}"
+    if is_output:
+        return f"{catalog}.{build_schema}_marts.{name}"
+    return f"{catalog}.{build_schema}.{name}"
+
+
 def propose_for_flow(flow, catalog, schema, big_rows, schedule_known):
     tiles = flow.get("tiles") or [
         {"id": a.get("id"), "type": a.get("type"), "name": a.get("name"), "config": a,
@@ -154,7 +163,7 @@ def propose_for_flow(flow, catalog, schema, big_rows, schedule_known):
         entry = {
             "materialized": materialized,
             "reason": reason,
-            "unity_catalog_name": f"{catalog}.{domain}.{name}",
+            "unity_catalog_name": _unity_catalog_name(catalog, domain, name, ttype, is_output),
         }
         if materialized in ("table", "incremental"):
             cb = _cluster_candidates(tid, by_id, out_degree)

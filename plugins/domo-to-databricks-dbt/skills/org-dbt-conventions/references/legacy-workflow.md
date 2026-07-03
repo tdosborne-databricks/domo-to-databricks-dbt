@@ -72,7 +72,7 @@ Use that exact name as the top key (shown here as `<project_name>`):
       host: <workspace-host>            # no https://
       http_path: /sql/1.0/warehouses/<warehouse-id>
       catalog: main
-      schema: domo_migration_dbt
+      schema: my_flow_dbt          # staging + intermediate
       threads: 8
       auth_type: oauth                  # OAuth M2M (service principal):
       client_id: "{{ env_var('DATABRICKS_CLIENT_ID') }}"
@@ -97,7 +97,7 @@ Or, on Databricks, a Workflows **dbt task** (no token; see `authentication.md`):
     commands: ["dbt build"]
     warehouse_id: "<sql_warehouse_id>"
     catalog: main
-    schema: domo_migration_dbt
+    schema: my_flow_dbt
 ```
 
 Marts are Delta tables; the converter sets `delta.columnMapping.mode=name` so Domo column names with spaces/`#` are allowed.

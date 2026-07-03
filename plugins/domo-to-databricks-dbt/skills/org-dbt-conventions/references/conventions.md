@@ -39,3 +39,17 @@ a `TODO` placeholder rather than inventing docs.
 
 Every generated model header comment records: source `flow_id`, source tile ids collapsed into it,
 and (if split/merged) why. Every job records the flows it covers.
+
+## Unity Catalog schemas (three-way split)
+
+Keep raw landed tables separate from dbt-built relations so the catalog UI stays scannable:
+
+| Role | UC schema | Wired by |
+|------|-----------|----------|
+| Raw sources | `{project}_dbt_src` | `overrides.json` → `sources.yml` |
+| Staging + intermediate | `{project}_dbt` | `profiles.yml` `schema` |
+| Marts (Domo outputs) | `{project}_dbt_marts` | `dbt_project.yml` `marts: +schema: marts` |
+
+Land ingested Domo/SQL Server tables in `*_src`. Point `overrides.json` at
+`main.<project>_dbt_src.<table>`. dbt builds `stg_*` / `int_*` views and tables under
+`<project>_dbt` and terminal marts under `<project>_dbt_marts`.

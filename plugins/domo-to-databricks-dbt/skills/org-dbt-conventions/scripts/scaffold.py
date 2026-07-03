@@ -90,14 +90,17 @@ _SQLFLUFF = (
 
 
 def _profiles_yml(project_name):
+    build_schema = f"{project_name}_dbt"
     return (
         f"{project_name}:\n"
         "  target: dev\n"
         "  outputs:\n"
         "    dev:\n"
         "      type: databricks\n"
-        "      catalog: main            # UC catalog for the migrated marts\n"
-        "      schema: domo_migration   # build schema\n"
+        f"      catalog: main            # UC catalog\n"
+        f"      schema: {build_schema}    # staging + intermediate models\n"
+        f"      # marts build to {build_schema}_marts (+schema in dbt_project.yml)\n"
+        f"      # land raw sources in {build_schema}_src (sources.yml / overrides.json)\n"
         "      host: <workspace-host>.cloud.databricks.com\n"
         "      http_path: /sql/1.0/warehouses/<warehouse_id>\n"
         "      auth_type: oauth         # PATs are disabled on many workspaces; OAuth reuses the CLI session\n"
