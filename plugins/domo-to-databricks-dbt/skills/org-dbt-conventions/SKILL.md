@@ -17,6 +17,14 @@ conventions here where they differ.** This skill is only the deltas — our laye
 criteria, and Domo-specific scaffolding. It explicitly defers to `dbt` (and `dbt-migration`) for
 general analytics-engineering best practice.
 
+<HARD-GATE>
+Step 3 of the fixed pipeline (domo-ingestion → tile-translation → **org-dbt-conventions** →
+dbt-error-triage → databricks-materialization-policy → migration-validation). Requires
+`tile-translation`'s generated models (and its `conversion_report.json` needs-review list resolved
+or explicitly deferred) before scaffolding. Do not run `dbt build` here — that belongs to
+`dbt-error-triage`, next.
+</HARD-GATE>
+
 ## What Domo lacked that we impose during migration
 
 Magic ETL projects grow organically with no enforced structure. Imposing dbt convention **during**
@@ -36,6 +44,7 @@ rather than a tile graph transcribed into SQL.
    values where the export reveals a domain. Net-new value Domo never had.
 5. **Docs.** `schema.yml` column docs sourced from Domo metadata where available.
 6. **Traceability.** Every model/CTE carries a comment back to its source flow + tiles.
+7. Hand off to `dbt-error-triage`.
 
 ## Scaffolding scripts
 

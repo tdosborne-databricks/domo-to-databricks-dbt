@@ -17,6 +17,16 @@ Domo's storage sprawl; making everything views can wreck downstream query perfor
 encodes the heuristics; it defers to `databricks-dbsql` / `databricks-unity-catalog` for the
 underlying Spark SQL and UC mechanics.
 
+<HARD-GATE>
+Step 5 of the fixed pipeline (domo-ingestion → tile-translation → org-dbt-conventions →
+dbt-error-triage → **databricks-materialization-policy** → migration-validation). Requires a green
+`dbt build` from `dbt-error-triage` first — don't propose materialization/clustering changes
+against a project that doesn't build, you'll be optimizing broken SQL. Before proposing anything,
+consult the official `databricks-dbsql` skill's `references/best-practices.md` (medallion
+staging/intermediate/marts layering, Liquid Clustering vs. Z-ORDER thresholds) rather than
+reinventing those thresholds here — this skill only encodes Domo-specific signals on top.
+</HARD-GATE>
+
 ## Decision rules
 
 | Signal (from ingestion inventory) | Materialization |
@@ -41,6 +51,8 @@ python3 <skill_dir>/scripts/materialization_policy.py <inventory.csv> <flows_dir
 
 The proposal is a **starting point** — surface it for review; the agent doesn't silently commit
 storage decisions.
+
+Hand off to `migration-validation`.
 
 ## References
 

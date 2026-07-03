@@ -15,6 +15,13 @@ description: >-
 We have **no direct access to Domo data**, so validation is tiered. Each flow's migration log
 records the **highest tier achieved** — that log is the audit trail deliverable.
 
+<HARD-GATE>
+Step 6 (final) of the fixed pipeline (domo-ingestion → tile-translation → org-dbt-conventions →
+dbt-error-triage → databricks-materialization-policy → **migration-validation**). This is the last
+step — there's no further hand-off. If Tier 2 fails here, that means `dbt-error-triage` didn't
+actually reach green; go back to it rather than re-diagnosing from scratch.
+</HARD-GATE>
+
 ## The three tiers
 
 - **Tier 1 — Static (always).** Transpiled SQL parses in the Spark SQL dialect; output schema
@@ -23,8 +30,10 @@ records the **highest tier achieved** — that log is the audit trail deliverabl
   graph. Runs with no warehouse.
 - **Tier 2 — Build (always, if a Databricks workspace is available).** `dbt build` succeeds and the
   generated dbt tests pass (not-null/unique on inferred keys, accepted-values where the export
-  reveals domains, relationship tests on joins). Max **3 automated fix iterations**, then escalate
-  to the human queue.
+  reveals domains, relationship tests on joins). Getting to green is `dbt-error-triage`'s job
+  (upstream of this skill, capped at 5 fix iterations before escalating) — by the time a flow
+  reaches Tier 2 here, the build should already be clean; this step just re-confirms it and runs
+  the tests.
 - **Tier 3 — Data diff (customer-run).** A standalone kit (scripts + instructions) the customer
   runs with **their** Domo access — row counts, per-column checksums, null rates, aggregate
   distributions comparing Domo outputs to the Databricks tables. Results come back as JSON; we

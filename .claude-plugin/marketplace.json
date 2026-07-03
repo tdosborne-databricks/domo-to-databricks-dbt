@@ -9,6 +9,7 @@
     "description": "Domo Magic ETL → dbt on Databricks migration skills.",
     "version": "2.0.0"
   },
+  "allowCrossMarketplaceDependenciesOn": ["dbt-agent-marketplace", "databricks-agent-skills"],
   "plugins": [
     {
       "name": "domo-to-databricks-dbt",

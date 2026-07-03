@@ -128,14 +128,14 @@ def _write_org_files(out_dir, project_name, result, flow_name):
                                  len(result["models"]), len(result["sources"])))
 
 
-def scaffold(flows_dir, dbt_project_dir, overrides=None):
+def scaffold(flows_dir, dbt_project_dir, overrides=None, source_columns=None):
     flows = _load_flows(flows_dir)
     multi = len(flows) > 1
     written = []
     for norm in flows:
         raw = _raw_flow(norm)
         mapping = _dataset_mapping(norm)
-        result = convert_flow_to_dbt(raw, mapping, overrides)
+        result = convert_flow_to_dbt(raw, mapping, overrides, source_columns=source_columns)
         project_name = _sanitize(raw.get("name") or raw.get("id") or "domo_dbt_project")
         out_dir = os.path.join(dbt_project_dir, project_name) if multi else dbt_project_dir
         write_dbt_project(result, out_dir, project_name=project_name)
@@ -151,7 +151,10 @@ def main():
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     overrides = json.load(open(sys.argv[3])) if len(sys.argv) > 3 else None
-    scaffold(sys.argv[1], sys.argv[2], overrides)
+    # optional 5th arg: {dataset_id|source_name: [column, ...]} to seed column lineage so
+    # formula/join tiles EXCEPT recomputed/colliding columns (see converter source_columns).
+    source_columns = json.load(open(sys.argv[4])) if len(sys.argv) > 4 else None
+    scaffold(sys.argv[1], sys.argv[2], overrides, source_columns=source_columns)
 
 
 if __name__ == "__main__":

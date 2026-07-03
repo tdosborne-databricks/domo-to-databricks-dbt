@@ -20,7 +20,11 @@ from .lineage import produced_columns
 from .tiles import render_tile
 from .sources import resolve_sources, source_ref
 
-_MATERIALIZE = {"staging": "view", "intermediate": "view", "marts": "table"}
+_MATERIALIZE = {"staging": "view", "intermediate": "table", "marts": "table"}
+# intermediate must be a table (not a view): Spark/Databricks re-resolves a view's
+# full upstream logical plan on every downstream read, so a serial chain of
+# intermediate views re-analyzes transitively and blows up superlinearly with
+# chain depth. Materializing each intermediate boundary once caps that cost.
 _LAYER_PREFIX = {"staging": "stg_", "intermediate": "int_", "marts": ""}
 _REF_RE = re.compile(r"\{\{\s*ref\('([^']+)'\)\s*\}\}")
 
@@ -33,6 +37,9 @@ def _out_degree(actions):
     return outdeg
 
 
+_WIDE_TILE_TYPES = {"MergeJoin", "GroupBy", "WindowAction", "Normalizer", "UnionAll"}
+
+
 def _boundary_layer(action, outdeg):
     """Return the layer if this tile is a model boundary, else None (it's an inlined CTE)."""
     t = action["type"]
@@ -42,6 +49,8 @@ def _boundary_layer(action, outdeg):
         return "marts"
     if outdeg.get(action["id"], 0) >= 2:      # reuse point: consumed by >1 downstream
         return "intermediate"
+    if t in _WIDE_TILE_TYPES:                  # reshaping tile: cap CTE-chain depth per model
+        return "intermediate"                  # to bound Catalyst analysis-time cost on Spark
     return None                                # out-degree 1 -> collapses into its consumer
 
 
@@ -50,7 +59,13 @@ def _indent(sql, n=2):
     return "\n".join(pad + line if line else line for line in sql.splitlines())
 
 
-def convert_flow_to_dbt(flow, dataset_mapping, overrides=None):
+def convert_flow_to_dbt(flow, dataset_mapping, overrides=None, source_columns=None):
+    # source_columns: optional {dataset_id | sanitized source name: [column, ...]} giving the REAL
+    # columns of each LoadFromVault source (from the export's dataset schema, or UC
+    # information_schema). When provided, column lineage is seeded at the sources instead of
+    # starting empty, so formula tiles EXCEPT columns they recompute (COLUMN_ALREADY_EXISTS) and
+    # joins drop right-side columns that collide with the left (AMBIGUOUS_REFERENCE) deterministically.
+    source_columns = source_columns or {}
     actions = flow["actions"]
     ordered = topo_sort(actions)
     by_id = {a["id"]: a for a in actions}
@@ -70,19 +85,27 @@ def convert_flow_to_dbt(flow, dataset_mapping, overrides=None):
     # 1) Render every tile to a SQL fragment (refs to upstream tiles are `{{ ref('<uid>') }}`).
     rendered, cols_by_id = {}, {}
     for a in ordered:
+        dep_cols = [list(cols_by_id.get(uid, [])) for uid in _deps(a)]   # per-branch (join needs L vs R)
         in_cols = []
-        for uid in _deps(a):
-            for c in cols_by_id.get(uid, []):
+        for cols in dep_cols:
+            for c in cols:
                 if c not in in_cols:
                     in_cols.append(c)
         ctx = {
             "up": upstream_views(a, id_to_view),
             "in_cols": in_cols,
+            "dep_cols": dep_cols,
             "dataset_mapping": ds_by_id,
             "source_for": lambda dsid: source_ref(ds_by_id.get(str(dsid), f"source_{dsid}")),
         }
         rendered[a["id"]] = render_tile(a, ctx)
-        cols_by_id[a["id"]] = produced_columns(a, in_cols)
+        if a["type"] == "LoadFromVault":
+            # Seed lineage with the source's real columns when known (else stay untracked -> []).
+            dsid = str(a.get("dataSourceId", ""))
+            seed = source_columns.get(dsid) or source_columns.get(_sanitize(ds_by_id.get(dsid, "")))
+            cols_by_id[a["id"]] = list(seed) if seed else produced_columns(a, in_cols, dep_cols)
+        else:
+            cols_by_id[a["id"]] = produced_columns(a, in_cols, dep_cols)
 
     # 2) Classify boundaries and assign each boundary a layer + model name.
     boundary_layer = {aid: _boundary_layer(by_id[aid], outdeg) for aid in by_id}
@@ -158,8 +181,12 @@ def _dbt_project_yml(project_name):
             "models:\n"
             f"  {project_name}:\n"
             "    staging: {+materialized: view}\n"
-            "    intermediate: {+materialized: view}\n"
-            "    marts: {+materialized: table}\n")
+            "    intermediate: {+materialized: table, +tblproperties: "
+            "{'delta.columnMapping.mode': 'name', 'delta.minReaderVersion': '2', "
+            "'delta.minWriterVersion': '5'}}\n"
+            "    marts: {+materialized: table, +tblproperties: "
+            "{'delta.columnMapping.mode': 'name', 'delta.minReaderVersion': '2', "
+            "'delta.minWriterVersion': '5'}}\n")
 
 
 def _sources_yml(sources):

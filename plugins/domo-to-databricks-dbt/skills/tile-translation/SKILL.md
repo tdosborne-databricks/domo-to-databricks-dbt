@@ -15,6 +15,15 @@ This is a **decompilation** problem, not a syntax conversion: Magic ETL logic li
 GUI state (tile config JSON). We recover intent and re-express it as idiomatic Spark SQL. Read
 `references/paradigm.md` first — it is the conceptual foundation.
 
+<HARD-GATE>
+Step 2 of the fixed pipeline (domo-ingestion → **tile-translation** → org-dbt-conventions →
+dbt-error-triage → databricks-materialization-policy → migration-validation). Requires
+`flows/<flow_id>.json` + `inventory.csv` from domo-ingestion — do not hand-author a flow graph.
+Do not skip straight to databricks-materialization-policy on your own judgment; materialization
+decisions happen later, after a green build, once dbt-error-triage has resolved whatever the
+converter's model boundaries expose.
+</HARD-GATE>
+
 ## The granularity rule (the central judgment call)
 
 **Tile ≠ model. Flow ≠ always one model.**
@@ -40,8 +49,9 @@ inlined as CTEs. Each model carries a traceability header listing the Domo flow 
 3. **Flag** untranslatable tiles as `-- TODO` blocks with the raw config attached — the agent
    resolves these using `references/semantic-gotchas.md` and judgment. **Never silently drop or
    guess a flagged tile.**
-4. Hand off to `org-dbt-conventions` (structure/tests) and `databricks-materialization-policy`
-   (view/table/incremental).
+4. Hand off to `org-dbt-conventions` (structure/tests). Materialization (view/table/incremental)
+   is decided later by `databricks-materialization-policy`, after `dbt-error-triage` gets the
+   project to a green build.
 
 ```bash
 python3 <skill_dir>/scripts/converter/convert_dataflow_to_dbt.py <extract_dir> <out_dir> [overrides.json]

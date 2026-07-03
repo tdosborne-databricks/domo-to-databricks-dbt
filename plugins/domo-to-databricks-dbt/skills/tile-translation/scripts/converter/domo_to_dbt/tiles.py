@@ -43,17 +43,57 @@ def m_filter(action, ctx):
     return TileResult(sql, "intermediate", False, "")
 
 
+# Domo GroupBy aggregation `type` -> Spark aggregate over the field's `source` column.
+# Domo encodes aggregations two ways: a `type`+`source` pair (no expression) OR a free-form
+# `expression` (a Beast Mode formula). This table covers the former.
+_GROUPBY_AGG = {
+    "SUM": lambda s: f"SUM(`{s}`)",
+    "AVG": lambda s: f"AVG(`{s}`)", "AVERAGE": lambda s: f"AVG(`{s}`)",
+    "MIN": lambda s: f"MIN(`{s}`)", "MAX": lambda s: f"MAX(`{s}`)",
+    "COUNT": lambda s: f"COUNT(`{s}`)",
+    "COUNT_ALL": lambda s: "COUNT(*)",
+    "COUNT_DISTINCT": lambda s: f"COUNT(DISTINCT `{s}`)",
+    "DISTINCT_COUNT": lambda s: f"COUNT(DISTINCT `{s}`)",
+    "STDDEV": lambda s: f"STDDEV(`{s}`)", "VARIANCE": lambda s: f"VARIANCE(`{s}`)",
+    "FIRST": lambda s: f"FIRST(`{s}`)", "LAST": lambda s: f"LAST(`{s}`)",
+}
+
+
+def _agg_expr(fld):
+    """Aggregate SQL for one GroupBy field, or None if the aggregation is unhandled."""
+    if fld.get("expression"):
+        return transpile_expr(fld["expression"])
+    op = (fld.get("type") or "").upper()
+    fn = _GROUPBY_AGG.get(op)
+    if fn:
+        return fn(fld.get("source") or fld.get("valuefield"))
+    return None
+
+
 def m_groupby(action, ctx):
     gc = ", ".join(f"`{g['name']}`" for g in action.get("groups", []))
-    exprs = [transpile_expr(fld["expression"]) for fld in action.get("fields", [])]
-    aggs = ", ".join(f"{expr} AS `{fld['name']}`"
-                     for expr, fld in zip(exprs, action.get("fields", [])))
+    fields = action.get("fields", [])
+    exprs, notes, needs = [], [], False
+    unmapped = set()
+    for fld in fields:
+        e = _agg_expr(fld)
+        if e is None:                        # unmapped aggregation type -> emit NULL + flag
+            needs = True
+            unmapped.add(fld.get("name"))
+            notes.append(f"{fld.get('name')}: unhandled GroupBy aggregation '{fld.get('type')}'")
+            e = "NULL"
+        exprs.append(e)
+    aggs = ", ".join(
+        f"{expr} AS `{fld['name']}`" + (" /* NEEDS REVIEW: unhandled aggregation */" if fld.get("name") in unmapped else "")
+        for expr, fld in zip(exprs, fields)
+    )
     select_list = ", ".join(x for x in [gc, aggs] if x) or "*"
     sql = (f"select {select_list}\nfrom {{{{ ref('{_first_up(ctx)}') }}}}\n"
            f"group by {gc}" if gc else
            f"select {select_list}\nfrom {{{{ ref('{_first_up(ctx)}') }}}}")
-    note = _dialect_note(exprs)
-    return TileResult(sql, "intermediate", bool(note), note)
+    dn = _dialect_note(exprs)
+    note = "; ".join(notes + ([dn] if dn else []))
+    return TileResult(sql, "intermediate", needs or bool(dn), note)
 
 
 # MySQL / Beast Mode functions with no safe automatic Spark translation (or that
@@ -91,14 +131,46 @@ def _dialect_note(texts):
     return ("Domo dialect needs manual transpile: " + ", ".join(sorted(found))) if found else ""
 
 
+def _ci_in(name, cols):
+    """Case-insensitive membership: SQL/Spark column identifiers are case-insensitive."""
+    n = (name or "").lower()
+    return any((c or "").lower() == n for c in cols)
+
+
 def m_formula(action, ctx):
     exprs = action.get("expressions", [])
     rendered = [(transpile_expr(e["expression"]), e["fieldName"]) for e in exprs]
-    cols = ", ".join(f"{expr} AS `{fn}`" for expr, fn in rendered)
     in_cols = ctx.get("in_cols") or []
-    replace = [fn for expr, fn in rendered if f"`{fn}`" in expr or fn in in_cols]
-    sql = f"{_star_prefix(replace)} {cols}\nfrom {{{{ ref('{_first_up(ctx)}') }}}}"
     note = _dialect_note([expr for expr, _ in rendered])
+    base = f"{{{{ ref('{_first_up(ctx)}') }}}}"
+
+    # Domo evaluates a formula tile's expressions in order, and a later formula may read a
+    # column an earlier one in the SAME tile just produced. A single `select expr1 AS a,
+    # expr2 AS b` can't express that -- every reference in a SELECT resolves to the *input*
+    # columns, not sibling aliases -- so `b`'s reference to `a` would read the upstream `a`
+    # (wrong value, and often the wrong TYPE -> DATATYPE_MISMATCH). Detect that case and emit
+    # one nested projection per expression so each sees the prior ones' recomputed columns.
+    fns = {fn for _, fn in rendered}
+    chained = any(_ci_in(other, [expr]) or f"`{other}`" in expr
+                  for expr, fn in rendered for other in fns if other != fn)
+
+    if not chained:
+        cols = ", ".join(f"{expr} AS `{fn}`" for expr, fn in rendered)
+        # EXCEPT a recomputed column if it already exists upstream (SQL identifiers are
+        # case-insensitive, so compare case-insensitively) or the expression references itself.
+        replace = [fn for expr, fn in rendered if f"`{fn}`" in expr or _ci_in(fn, in_cols)]
+        sql = f"{_star_prefix(replace)} {cols}\nfrom {base}"
+        return TileResult(sql, "intermediate", bool(note), note)
+
+    # Nested chain: innermost reads the upstream ref; each layer recomputes one column,
+    # EXCEPTing it when it already exists (upstream or produced by an earlier layer).
+    seen = {c.lower() for c in in_cols}
+    current_from, sql = base, ""
+    for expr, fn in rendered:
+        replace = [fn] if (fn.lower() in seen or f"`{fn}`" in expr) else []
+        sql = f"{_star_prefix(replace)} {expr} AS `{fn}`\nfrom {current_from}"
+        current_from = f"(\n{sql}\n)"
+        seen.add(fn.lower())
     return TileResult(sql, "intermediate", bool(note), note)
 
 
@@ -114,23 +186,33 @@ def m_join(action, ctx):
     jt = (action.get("joinType") or "INNER").upper()
     k1, k2 = action.get("keys1", []), action.get("keys2", [])
     cond = " AND ".join(f"l.`{a}` = r.`{b}`" for a, b in zip(k1, k2)) or "1=1"
-    # Drop the right side's join-key columns to avoid duplicate column names
-    # (l and r share the join keys). Non-key same-named columns across sides
-    # may still collide and need manual disambiguation.
-    if k2:
-        right_cols = "r.* except (" + ", ".join(f"`{b}`" for b in k2) + ")"
-    else:
-        right_cols = "r.*"
-    sql = ("-- non-key column-name collisions across sides may still need manual disambiguation\n"
-           f"select l.*, {right_cols}\nfrom {{{{ ref('{left}') }}}} l\n"
+    # Drop from the right side: (1) the join-key columns (shared with the left), and
+    # (2) any NON-key column also present on the left -- a duplicate name would otherwise
+    # trigger AMBIGUOUS_REFERENCE when referenced downstream. (2) needs both sides' column
+    # sets: when column lineage is seeded (source_columns), we drop them deterministically
+    # and the model is clean; when columns are untracked we can only drop the keys and must
+    # flag the model for manual review.
+    dep_cols = ctx.get("dep_cols") or []
+    left_cols = dep_cols[0] if len(dep_cols) > 0 else []
+    right_cols = dep_cols[1] if len(dep_cols) > 1 else []
+    known = bool(left_cols) and bool(right_cols)
+    drop = list(k2)
+    if known:
+        lset = {c.lower() for c in left_cols}
+        dset = {c.lower() for c in drop}
+        for c in right_cols:
+            if c.lower() in lset and c.lower() not in dset:
+                drop.append(c)
+                dset.add(c.lower())
+    right_sel = ("r.* except (" + ", ".join(f"`{c}`" for c in drop) + ")") if drop else "r.*"
+    sql = (f"select l.*, {right_sel}\nfrom {{{{ ref('{left}') }}}} l\n"
            f"{jt} join {{{{ ref('{right}') }}}} r on {cond}")
-    # We except the right side's join keys, but any NON-key column present on both
-    # sides also collides (duplicate name -> AMBIGUOUS_REFERENCE when referenced
-    # downstream). We can't detect that statically without both sides' real schemas,
-    # so surface the boundary model for review rather than hiding it in a comment.
+    if known:
+        return TileResult(sql, "intermediate", False, "")
+    # Columns untracked: only join keys dropped; non-key collisions may remain -> review.
     note = ("join may carry non-key columns present on both sides (duplicate names -> "
-            "AMBIGUOUS_REFERENCE downstream); verify against real upstream schemas")
-    return TileResult(sql, "intermediate", True, note)
+            "AMBIGUOUS_REFERENCE downstream); wire source_columns or verify upstream schemas")
+    return TileResult("-- " + note + "\n" + sql, "intermediate", True, note)
 
 
 # Domo Magic ETL column types -> Spark/Databricks SQL types. Domo emits a few
@@ -165,8 +247,48 @@ def m_select(action, ctx):
     return TileResult(sql, "intermediate", False, "")
 
 
+def _alter_columns(fields, in_cols=()):
+    """Render an Alter Columns (Metadata) tile: modify LISTED columns, pass through the rest.
+
+    Unlike Select Columns (an explicit projection), Domo's Alter Columns changes the type/name
+    of the listed columns and keeps every unlisted column. So emit `* except(<changed/removed>)`
+    plus the transformed expressions, instead of a bare projection that would drop pass-throughs.
+
+    When upstream columns are known (in_cols), skip fields whose column isn't present (a stale
+    Domo config referencing a dropped column would otherwise break `except`/CAST), and when a
+    rename targets a name that already exists upstream, drop that too (Domo replaces it).
+    """
+    known = {c.lower() for c in in_cols}        # SQL identifiers are case-insensitive
+    tracked = bool(known)
+    except_cols, exprs = [], []
+    for f in fields or []:
+        name = f.get("name")
+        if not name:
+            continue
+        if tracked and name.lower() not in known:   # stale config: column not present upstream
+            continue
+        if f.get("remove"):
+            except_cols.append(name)
+            continue
+        rename, typ = f.get("rename"), f.get("type")
+        if typ or rename:                       # changed -> except original, re-add transformed
+            except_cols.append(name)
+            out_name = rename or name
+            _exc = {c.lower() for c in except_cols}
+            if rename and out_name.lower() != name.lower() and out_name.lower() in known \
+                    and out_name.lower() not in _exc:
+                except_cols.append(out_name)    # rename onto an existing column -> replace it
+            expr = f"CAST(`{name}` AS {_spark_type(typ)})" if typ else f"`{name}`"
+            exprs.append(f"{expr} AS `{out_name}`")
+        # else: listed but unchanged -> passes through via `*`
+    if not except_cols and not exprs:
+        return "*"
+    star = "*" + (f" except ({', '.join(f'`{c}`' for c in except_cols)})" if except_cols else "")
+    return star + (", " + ", ".join(exprs) if exprs else "")
+
+
 def m_metadata(action, ctx):
-    sql = (f"select {_project_fields(action.get('fields'))}\n"
+    sql = (f"select {_alter_columns(action.get('fields'), ctx.get('in_cols', ()))}\n"
            f"from {{{{ ref('{_first_up(ctx)}') }}}}")
     return TileResult(sql, "intermediate", False, "")
 
@@ -184,13 +306,32 @@ _WINDOW_FN = {"RANK": "RANK", "DENSE_RANK": "DENSE_RANK", "ROW_NUMBER": "ROW_NUM
 
 
 def m_union(action, ctx):
-    legs = [f"select * from {{{{ ref('{v}') }}}}" for v in ctx["up"]]
-    # Databricks SQL has NO `UNION ... BY NAME` (DataFrame-only). Domo Append-Rows
-    # aligns legs by column NAME, but positional SQL UNION aligns by position, so
-    # flag for review: legs must have matching column order/count, else align
-    # columns manually or rebuild this model with explicit projected columns.
+    ups = ctx["up"]
+    dep_cols = ctx.get("dep_cols") or []
     joiner = ("\nunion all\n" if (action.get("unionType") == "INCLUDE_ALL")
               else "\nunion\n")
+    # Databricks SQL has NO `UNION ... BY NAME` (DataFrame-only). Domo Append-Rows aligns legs
+    # by column NAME and pads missing columns with NULL; a positional SQL UNION aligns by
+    # position and requires identical column counts (-> NUM_COLUMNS_MISMATCH when legs differ).
+    # When every leg's columns are known (lineage seeded), emulate UNION BY NAME: project each
+    # leg to a canonical column order (first appearance across legs), filling absent columns
+    # with NULL. Otherwise fall back to a positional UNION and flag it for manual review.
+    if dep_cols and len(dep_cols) == len(ups) and all(dep_cols):
+        canon, seen = [], set()
+        for cols in dep_cols:
+            for c in cols:
+                if (c or "").lower() not in seen:
+                    canon.append(c)
+                    seen.add((c or "").lower())
+        legs = []
+        for v, cols in zip(ups, dep_cols):
+            have = {(c or "").lower() for c in cols}
+            sel = ", ".join(f"`{c}`" if (c or "").lower() in have else f"NULL AS `{c}`"
+                            for c in canon)
+            legs.append(f"select {sel}\nfrom {{{{ ref('{v}') }}}}")
+        return TileResult(joiner.join(legs) or "select 1", "intermediate", False, "")
+
+    legs = [f"select * from {{{{ ref('{v}') }}}}" for v in ups]
     sql = ("-- NEEDS REVIEW: positional UNION; Domo aligns by column name. Verify "
            "leg column order/count match (Databricks SQL has no UNION BY NAME).\n"
            + (joiner.join(legs) or "select 1"))
@@ -204,18 +345,24 @@ def m_window(action, ctx):
         f"`{o['column']}` {'ASC' if o.get('ascending', True) else 'DESC'}"
         for o in action.get("orderRules", []))
     over = f"PARTITION BY {part} ORDER BY {order}" if part else f"ORDER BY {order}"
-    cols = []
+    in_cols = ctx.get("in_cols") or []
+    cols, replace = [], []
     note, needs = "", False
     for add in action.get("additions", []):
+        name = add["name"]
+        # A window output whose name already exists upstream (e.g. a rank column carried over from a
+        # prior Domo run) must EXCEPT the original, else `select *, ... AS name` -> COLUMN_ALREADY_EXISTS.
+        if _ci_in(name, in_cols):
+            replace.append(name)
         op = (add.get("operation") or {}).get("operationType", "")
         fn = _WINDOW_FN.get(op.upper())
         if fn:
-            cols.append(f"{fn}() OVER ({over}) AS `{add['name']}`")
+            cols.append(f"{fn}() OVER ({over}) AS `{name}`")
         else:
             needs = True
             note = f"unsupported window op '{op}'"
-            cols.append(f"NULL AS `{add['name']}`  -- NEEDS REVIEW: {note}")
-    sql = f"select *, {', '.join(cols)}\nfrom {{{{ ref('{_first_up(ctx)}') }}}}"
+            cols.append(f"NULL AS `{name}` /* NEEDS REVIEW: {note} */")
+    sql = f"{_star_prefix(replace)} {', '.join(cols)}\nfrom {{{{ ref('{_first_up(ctx)}') }}}}"
     return TileResult(sql, "intermediate", needs, note)
 
 
@@ -224,9 +371,16 @@ def m_normalizer(action, ctx):
     tf = action.get("typefield", "type")
     dest = fields[0]["destField"] if fields else "value"
     pairs = ", ".join(f"'{f['typefieldValue']}', `{f['sourceField']}`" for f in fields)
-    # Domo unpivot keeps the non-unpivoted columns; drop only the source columns
-    # being melted so downstream tiles still see passthrough columns.
-    srcs = sorted({f["sourceField"] for f in fields})
+    in_cols = ctx.get("in_cols") or []
+    # Domo unpivot keeps the non-unpivoted columns; drop the source columns being melted so
+    # downstream tiles still see passthrough columns. Also drop any passthrough column that
+    # collides with the stack's OUTPUT names (typefield / destField) -- otherwise the stack
+    # emits a second `dest`/`typefield` alongside the existing one -> AMBIGUOUS_REFERENCE.
+    drop = {f["sourceField"] for f in fields}
+    for out_name in (tf, dest):
+        if _ci_in(out_name, in_cols):
+            drop.add(out_name)
+    srcs = sorted(drop)
     except_clause = (" except (" + ", ".join(f"`{s}`" for s in srcs) + ")") if srcs else ""
     sql = (f"select *{except_clause}, stack({len(fields)}, {pairs}) as (`{tf}`, `{dest}`)\n"
            f"from {{{{ ref('{_first_up(ctx)}') }}}}")
@@ -245,7 +399,7 @@ def m_datecalc(action, ctx):
     for c in calcs:
         ct = (c.get("calcType") or "").upper()
         name = c["fieldName"]
-        if name in (c.get("fieldA"), c.get("fieldB")) or name in in_cols:
+        if name in (c.get("fieldA"), c.get("fieldB")) or _ci_in(name, in_cols):
             replace.append(name)
         if ct == "DATE_WORKING_DIFF":
             expr = _working_day_diff(f"`{c['fieldA']}`", f"`{c['fieldB']}`")

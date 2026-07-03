@@ -47,15 +47,22 @@ plugins/domo-to-databricks-dbt/
 | `databricks-materialization-policy` | Overlay on the official `databricks` skills: view/table/incremental, clustering, UC naming. |
 | `migration-validation` | Tiered validation (static → build → customer data-diff) + per-flow audit log. |
 
-**Official skills (install separately)** — the target platform's best practices:
+**Official skills** — the target platform's best practices. `plugin.json` declares these as plugin
+dependencies (`dbt`, `dbt-migration` from `dbt-agent-marketplace`; `databricks` from
+`databricks-agent-skills`), so `claude plugin install domo-to-databricks-dbt@...` resolves and
+installs all three automatically — no separate step needed. `marketplace.json` allowlists both
+marketplaces via `allowCrossMarketplaceDependenciesOn` since they're not this repo's own. If a
+dependency's marketplace isn't already configured in your Claude Code install, add it once and
+`/reload-plugins` picks up the rest:
 
 ```bash
 claude plugin marketplace add dbt-labs/dbt-agent-skills
 claude plugin marketplace add databricks/databricks-agent-skills
-claude plugin install dbt@dbt-agent-marketplace
-claude plugin install dbt-migration@dbt-agent-marketplace
-claude plugin install databricks@databricks-agent-skills
 ```
+
+(Cursor, Codex/CLI, and Copilot don't share Claude Code's dependency resolution — installing the
+mirrored manifests for those tools still means installing the official dbt/databricks skills by
+hand.)
 
 The custom overlays contain only the **deltas** (our conventions, our tolerances) and defer to the
 official skills for general dbt/Databricks work — e.g. `databricks-dabs`/`databricks-jobs` govern
@@ -83,7 +90,7 @@ tool schemas inflate token cost ~30x at scale). MCP is optional for interactive 
 ## Requirements
 
 - Python 3.9+ (custom scripts use only the standard library).
-- The official dbt + databricks plugins installed (above).
+- The official dbt + databricks plugins (auto-installed as dependencies — see above).
 - `dbt-databricks` + a Databricks workspace / SQL warehouse to build and deploy.
 
 ## Status

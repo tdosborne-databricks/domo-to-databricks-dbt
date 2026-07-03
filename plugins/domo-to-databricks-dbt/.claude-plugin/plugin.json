@@ -20,5 +20,10 @@
     "unity-catalog",
     "asset-bundle"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "dependencies": [
+    { "name": "dbt", "marketplace": "dbt-agent-marketplace" },
+    { "name": "dbt-migration", "marketplace": "dbt-agent-marketplace" },
+    { "name": "databricks", "marketplace": "databricks-agent-skills" }
+  ]
 }
