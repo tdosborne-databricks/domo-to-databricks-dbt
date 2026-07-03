@@ -55,6 +55,30 @@ e2-demo-field-eng"), don't ask again, just proceed.
 **Do not** separately ask whether to dispatch each pipeline step as a subagent or run it inline —
 that's not a per-session judgment call, it's a fixed default (see "Dispatch model" below).
 
+## Set up an isolated workspace before domo-ingestion runs
+
+Regardless of the local-vs-Databricks answer, every migration needs its own clean directory (or
+workspace path) — never reuse a scratch directory left over from a previous flow or a previous
+session, and never scaffold into a directory that already has unrelated files in it.
+`org-dbt-conventions`'s `scaffold.py` writes into whatever `<dbt_project_dir>` it's given; nothing
+downstream checks that directory was actually meant for this flow, so this has to happen first.
+
+- **Local target**:
+  ```bash
+  python3 <skill_dir>/scripts/init_migration_workspace.py <root_dir> <flow_name> --target local
+  ```
+  Refuses to run if `<root_dir>` already exists and is non-empty (pass `--force` only when
+  deliberately resuming a known-good workspace from an earlier session on this same flow). Creates
+  `<root_dir>/ingestion/` (point `domo-ingestion` at this) and `<root_dir>/dbt/` (point
+  `org-dbt-conventions` at this), git-inits the root, and writes `MIGRATION.md` recording the flow
+  name and target so a later session doesn't have to re-ask.
+
+- **Databricks target**: there's no local directory to create — isolation instead comes from a
+  unique DAB `bundle.name` per flow plus a schema scoped to the engagement (not a shared default
+  like `main.domo_migration` reused across customers). See
+  `references/isolated-workspace-setup.md` for the concrete bundle-naming and Unity-Catalog-schema
+  conventions and why `mode: development` isolation isn't enough on its own for the data side.
+
 ## Dispatch model: subagents by default
 
 Every step in this pipeline (`domo-ingestion` through `dbt-project-optimization`) runs as its own
