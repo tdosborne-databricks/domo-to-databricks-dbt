@@ -13,26 +13,51 @@ tiles. Start at
 ## Install
 
 This repo is a plugin marketplace containing one plugin (`domo-to-databricks-dbt`). Skills are plain
-`SKILL.md` files and work across agent tools:
+`SKILL.md` files and work across agent tools.
+
+### Claude Code
+
+Companion plugins **`dbt`**, **`dbt-migration`**, and **`databricks`** are declared in
+`.claude-plugin/plugin.json` and install automatically with this plugin:
 
 ```bash
-# Claude Code
 claude plugin marketplace add https://github.com/tdosborne-databricks/domo-to-databricks-dbt
 claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
 ```
 
-Companion plugins **`dbt`**, **`dbt-migration`**, and **`databricks`** are declared in
-`plugin.json` and install with this plugin in Claude Code. If dependency resolution fails,
-register the upstream marketplaces once:
+If dependency resolution fails, register the upstream marketplaces once:
 
 ```bash
 claude plugin marketplace add dbt-labs/dbt-agent-skills
 claude plugin marketplace add databricks/databricks-agent-skills
 ```
 
-Cursor, Codex/CLI agents, and GitHub Copilot read the mirrored manifests in `.cursor-plugin/`,
-`.agents/plugins/`, and `.github/plugin/`. Tools without a plugin system can read
-`plugins/domo-to-databricks-dbt/skills/` directly. See `AGENTS.md`.
+### Cursor
+
+Cursor does **not** support a `dependencies` field in `plugin.json` (unlike Claude Code). The
+[`.cursor-plugin/marketplace.json`](.cursor-plugin/marketplace.json) multi-plugin format only
+bundles plugins from **this same Git repo** via relative paths — it cannot pull in external
+marketplaces like `dbt-labs/dbt-agent-skills` or `databricks/databricks-agent-skills`.
+
+Install this plugin and its companions separately:
+
+```text
+/add-plugin https://github.com/tdosborne-databricks/domo-to-databricks-dbt
+/add-plugin dbt
+/add-plugin databricks
+```
+
+Then open **Customize → Plugins** and install **`domo-to-databricks-dbt`** from your imported
+marketplace, plus **`dbt`** and **`databricks`** from the official Cursor Marketplace.
+
+Alternative for dbt skills (no plugin bundle): `npx skills add dbt-labs/dbt-agent-skills --global`.
+For Databricks skills without the plugin: `databricks aitools install` (skills only, no hooks).
+
+### Other agents
+
+Codex/CLI agents and GitHub Copilot read the mirrored manifests in `.agents/plugins/` and
+`.github/plugin/`. Tools without a plugin system can read `plugins/domo-to-databricks-dbt/skills/`
+directly. See `AGENTS.md`.
 
 ### Repo layout
 
@@ -40,7 +65,8 @@ Cursor, Codex/CLI agents, and GitHub Copilot read the mirrored manifests in `.cu
 .claude-plugin/marketplace.json     # + .cursor-plugin/, .agents/plugins/, .github/plugin/
 AGENTS.md                           # cross-tool entrypoint
 plugins/domo-to-databricks-dbt/
-  .claude-plugin/plugin.json
+  .claude-plugin/plugin.json        # includes dependencies (Claude only)
+  .cursor-plugin/plugin.json        # no dependencies field (Cursor)
   skills/                           # 9 skills (SKILL.md + references/ + scripts/)
   tests/                            # pipeline integration tests
 ```
@@ -105,7 +131,7 @@ tables or foreign federated catalogs).
 ## Requirements
 
 - Python 3.9+ (skill scripts use the standard library; converter tests use pytest).
-- `dbt` and `databricks` companion plugins (installed via `plugin.json` dependencies in Claude Code).
+- `dbt` and `databricks` companion plugins (auto in Claude Code; manual in Cursor — see Install).
 - Databricks workspace + SQL warehouse (or Workflows dbt task) for Tier 2 builds.
 - Domo Step-1 extract including `dataflows.json`, `dataset_mapping.json`, and `streams.json`.
 

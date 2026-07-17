@@ -140,9 +140,16 @@ every flow goes through the same triage step in the same place, logging to the s
 
 ## Official-skill dependencies
 
-Declared in `plugin.json` (`dbt`, `dbt-migration`, `databricks`) — Claude Code installs them with
-this plugin. Do not ask the user to install those companions manually unless dependency resolution
-failed (then register `dbt-labs/dbt-agent-skills` and `databricks/databricks-agent-skills`).
+This pipeline delegates to official **dbt** and **Databricks** skills. Install them before
+running migrations:
+
+| Agent | Install companions |
+|---|---|
+| **Claude Code** | Automatic via `.claude-plugin/plugin.json` `dependencies`. If resolution fails: `claude plugin marketplace add dbt-labs/dbt-agent-skills` and `databricks/databricks-agent-skills`, then reinstall. |
+| **Cursor** | No dependency field — install manually: `/add-plugin dbt` and `/add-plugin databricks` (official Cursor Marketplace), then enable both in Customize → Plugins. |
+| **Other** | `npx skills add dbt-labs/dbt-agent-skills --global` and `databricks aitools install` (or vendor skills into the project). |
+
+If companions are missing, install them before proceeding — do not reinvent what they cover.
 
 This plugin is deliberately thin where the official skills already cover the ground — don't
 reinvent what they do:

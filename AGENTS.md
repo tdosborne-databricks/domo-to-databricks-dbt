@@ -27,26 +27,45 @@ Each skill's `SKILL.md` has a `<HARD-GATE>` with prerequisites and hand-off. Con
 
 ## Companion official skills
 
-`plugin.json` declares **`dbt`**, **`dbt-migration`**, and **`databricks`** as dependencies —
-Claude Code installs them with this plugin. Non-Claude agents should load the equivalent skills
-from `dbt-labs/dbt-agent-skills` and `databricks/databricks-agent-skills` separately.
-
-If dependency resolution fails in Claude Code, register the upstream marketplaces once:
+**Claude Code:** `.claude-plugin/plugin.json` declares **`dbt`**, **`dbt-migration`**, and
+**`databricks`** as dependencies — they install with this plugin. If resolution fails:
 
 ```bash
 claude plugin marketplace add dbt-labs/dbt-agent-skills
 claude plugin marketplace add databricks/databricks-agent-skills
 ```
 
+**Cursor:** no `dependencies` field exists. Install companions manually before running the
+pipeline:
+
+```text
+/add-plugin dbt
+/add-plugin databricks
+```
+
+**Other agents:** load equivalent skills from `dbt-labs/dbt-agent-skills` and
+`databricks/databricks-agent-skills` (e.g. `npx skills add … --global`, or
+`databricks aitools install`).
+
 ## Install this plugin
+
+**Claude Code:**
 
 ```bash
 claude plugin marketplace add https://github.com/tdosborne-databricks/domo-to-databricks-dbt
 claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
 ```
 
-Cursor / Codex / Copilot: mirrored manifests in `.cursor-plugin/`, `.agents/plugins/`,
-`.github/plugin/`. Or read `SKILL.md` files directly.
+**Cursor:**
+
+```text
+/add-plugin https://github.com/tdosborne-databricks/domo-to-databricks-dbt
+```
+
+Then install `domo-to-databricks-dbt` from Customize → Plugins. See README for companion plugins.
+
+Codex / Copilot: mirrored manifests in `.agents/plugins/`, `.github/plugin/`. Or read `SKILL.md`
+files directly.
 
 ## Developing
 
