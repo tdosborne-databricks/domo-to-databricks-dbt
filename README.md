@@ -16,8 +16,8 @@ This repo is a plugin marketplace containing one plugin (`domo-to-databricks-dbt
 `SKILL.md` files and work across agent tools. Clone this repository locally, then:
 
 ```bash
-# Claude Code (from the repo root)
-claude plugin marketplace add /path/to/domo-to-databricks-dbt-plugin
+# Claude Code
+claude plugin marketplace add https://github.com/tdosborne-databricks/domo-to-databricks-dbt
 claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
 ```
 
