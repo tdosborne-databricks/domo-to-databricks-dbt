@@ -13,12 +13,21 @@ tiles. Start at
 ## Install
 
 This repo is a plugin marketplace containing one plugin (`domo-to-databricks-dbt`). Skills are plain
-`SKILL.md` files and work across agent tools. Clone this repository locally, then:
+`SKILL.md` files and work across agent tools:
 
 ```bash
 # Claude Code
 claude plugin marketplace add https://github.com/tdosborne-databricks/domo-to-databricks-dbt
 claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
+```
+
+Companion plugins **`dbt`**, **`dbt-migration`**, and **`databricks`** are declared in
+`plugin.json` and install with this plugin in Claude Code. If dependency resolution fails,
+register the upstream marketplaces once:
+
+```bash
+claude plugin marketplace add dbt-labs/dbt-agent-skills
+claude plugin marketplace add databricks/databricks-agent-skills
 ```
 
 Cursor, Codex/CLI agents, and GitHub Copilot read the mirrored manifests in `.cursor-plugin/`,
@@ -61,15 +70,8 @@ domo-ingestion → domo-source-resolution → tile-translation → org-dbt-conve
 | `migration-validation` | Tier 1 static → Tier 2 build → Tier 3 customer diff kit. |
 | `dbt-project-optimization` | Post-migration cleanup (inline, rename) after correctness is proven. |
 
-**Official skill overlays** (declared in `plugin.json`): `dbt`, `dbt-migration`, `databricks`.
-Install marketplaces once if needed:
-
-```bash
-claude plugin marketplace add dbt-labs/dbt-agent-skills
-claude plugin marketplace add databricks/databricks-agent-skills
-```
-
-Prefer skills + the `dbt` CLI over the dbt MCP server for batch runs.
+Prefer the official **`dbt`** and **`databricks`** skill overlays (via `plugin.json` dependencies)
+plus the `dbt` CLI over the dbt MCP server for batch runs.
 
 ## Unity Catalog layout
 
@@ -103,7 +105,7 @@ tables or foreign federated catalogs).
 ## Requirements
 
 - Python 3.9+ (skill scripts use the standard library; converter tests use pytest).
-- Official dbt + databricks plugins (see above).
+- `dbt` and `databricks` companion plugins (installed via `plugin.json` dependencies in Claude Code).
 - Databricks workspace + SQL warehouse (or Workflows dbt task) for Tier 2 builds.
 - Domo Step-1 extract including `dataflows.json`, `dataset_mapping.json`, and `streams.json`.
 

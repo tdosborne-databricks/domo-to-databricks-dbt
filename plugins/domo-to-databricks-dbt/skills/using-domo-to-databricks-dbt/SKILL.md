@@ -140,6 +140,10 @@ every flow goes through the same triage step in the same place, logging to the s
 
 ## Official-skill dependencies
 
+Declared in `plugin.json` (`dbt`, `dbt-migration`, `databricks`) — Claude Code installs them with
+this plugin. Do not ask the user to install those companions manually unless dependency resolution
+failed (then register `dbt-labs/dbt-agent-skills` and `databricks/databricks-agent-skills`).
+
 This plugin is deliberately thin where the official skills already cover the ground — don't
 reinvent what they do:
 

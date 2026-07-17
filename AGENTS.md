@@ -27,17 +27,21 @@ Each skill's `SKILL.md` has a `<HARD-GATE>` with prerequisites and hand-off. Con
 
 ## Companion official skills
 
+`plugin.json` declares **`dbt`**, **`dbt-migration`**, and **`databricks`** as dependencies —
+Claude Code installs them with this plugin. Non-Claude agents should load the equivalent skills
+from `dbt-labs/dbt-agent-skills` and `databricks/databricks-agent-skills` separately.
+
+If dependency resolution fails in Claude Code, register the upstream marketplaces once:
+
 ```bash
 claude plugin marketplace add dbt-labs/dbt-agent-skills
 claude plugin marketplace add databricks/databricks-agent-skills
-claude plugin install dbt@dbt-agent-marketplace
-claude plugin install databricks@databricks-agent-skills
 ```
 
 ## Install this plugin
 
 ```bash
-claude plugin marketplace add <this-repo>
+claude plugin marketplace add https://github.com/tdosborne-databricks/domo-to-databricks-dbt
 claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
 ```
 
