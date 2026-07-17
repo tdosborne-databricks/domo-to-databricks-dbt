@@ -6,7 +6,7 @@ description: >-
   tile), rewrites Domo Beast Mode / MySQL dialect to Spark SQL, and flags anything it can't
   translate deterministically as a `-- TODO` block for agent judgment. Triggers on "transpile Domo
   tiles", "Domo tile to SQL", "Beast Mode to Spark", "convert Domo flow to dbt SQL", "Magic ETL to
-  Spark SQL", "tile mapping", "semantic gotchas", "Domo dialect". Run AFTER domo-ingestion.
+  Spark SQL", "tile mapping", "semantic gotchas", "Domo dialect". Run AFTER domo-source-resolution.
 ---
 
 # Tile Translation (Domo tiles → Spark SQL CTEs)
@@ -16,9 +16,10 @@ GUI state (tile config JSON). We recover intent and re-express it as idiomatic S
 `references/paradigm.md` first — it is the conceptual foundation.
 
 <HARD-GATE>
-Step 2 of the fixed pipeline (domo-ingestion → **tile-translation** → org-dbt-conventions →
-databricks-materialization-policy → dbt-error-triage → migration-validation).
-`flows/<flow_id>.json` + `inventory.csv` from domo-ingestion — do not hand-author a flow graph.
+Step 3 of the fixed pipeline (domo-ingestion → domo-source-resolution → **tile-translation** →
+org-dbt-conventions → databricks-materialization-policy → dbt-error-triage → migration-validation).
+`flows/<flow_id>.json` + `inventory.csv` from domo-ingestion; `overrides.json` from
+domo-source-resolution (or explicitly deferred by the user) — do not hand-author a flow graph.
 Do not skip straight to databricks-materialization-policy on your own judgment; org-dbt-conventions
 must scaffold the project first.
 </HARD-GATE>

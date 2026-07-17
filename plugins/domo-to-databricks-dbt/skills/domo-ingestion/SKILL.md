@@ -19,9 +19,10 @@ graph — they only read `flows/<flow_id>.json` + `inventory.csv`.
 **This is Step 1 of every migration batch. Run it before transpiling anything.**
 
 <HARD-GATE>
-This is the entry point of the fixed migration pipeline: domo-ingestion → tile-translation →
-org-dbt-conventions → databricks-materialization-policy → dbt-error-triage → migration-validation.
-Do not skip ahead to tile-translation until `inventory.csv` and `completeness_report.json` exist
+This is the entry point of the fixed migration pipeline: domo-ingestion → domo-source-resolution →
+tile-translation → org-dbt-conventions → databricks-materialization-policy → dbt-error-triage →
+migration-validation.
+Do not skip ahead to domo-source-resolution until `inventory.csv` and `completeness_report.json` exist
 for the flow(s) being migrated. If the completeness report flags missing schedules/schemas/row
 counts, surface that to the user before proceeding — don't silently transpile against gaps.
 </HARD-GATE>
@@ -49,7 +50,8 @@ counts, surface that to the user before proceeding — don't silently transpile 
 4. **Inventory.** Emit `inventory.csv`: flow name, tile count, tile-type distribution (complexity
    score), inputs, outputs, schedule-if-known. This inventory drives coverage targets and the
    dependency ordering the batch runs in.
-5. Hand off to `tile-translation`.
+5. Hand off to `domo-source-resolution` (extract streams → UC mapping → `overrides.json`),
+   then `tile-translation`.
 
 ```bash
 # Mode A — normalize a provided export (default):

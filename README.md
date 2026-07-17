@@ -31,7 +31,7 @@ Cursor, Codex/CLI agents, and GitHub Copilot read the mirrored manifests in `.cu
 AGENTS.md                           # cross-tool entrypoint
 plugins/domo-to-databricks-dbt/
   .claude-plugin/plugin.json
-  skills/                           # 8 skills (SKILL.md + references/ + scripts/)
+  skills/                           # 9 skills (SKILL.md + references/ + scripts/)
   tests/                            # pipeline integration tests
 ```
 
@@ -41,7 +41,7 @@ Start every migration with **`using-domo-to-databricks-dbt`** — it sets target
 workspace isolation, and subagent dispatch.
 
 ```
-domo-ingestion → tile-translation → org-dbt-conventions
+domo-ingestion → domo-source-resolution → tile-translation → org-dbt-conventions
   → databricks-materialization-policy (Phase A: apply)
   → dbt-error-triage (first dbt build)
   → migration-validation (Tier 1 → Tier 2 → Tier 3)
@@ -52,6 +52,7 @@ domo-ingestion → tile-translation → org-dbt-conventions
 |---|---|
 | `using-domo-to-databricks-dbt` | Entry point: target, isolation, dispatch model. **Always first.** |
 | `domo-ingestion` | Export or live API → normalized flow graph + inventory. |
+| `domo-source-resolution` | Flow-scoped `streams.json` extract → UC discovery with user → `overrides.json`. |
 | `tile-translation` | Tile DAG → Spark SQL CTEs; Beast Mode/MySQL dialect; `-- TODO` flags. |
 | `org-dbt-conventions` | Layering, naming, scaffold (`sources.yml`, models, tests). |
 | `databricks-materialization-policy` | **Apply** view/table defaults (`apply_materialization.py`); propose clustering/incremental (Phase B). |

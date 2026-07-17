@@ -35,6 +35,7 @@ statval = _load(_script("migration-validation", "static_validator.py"), "static_
 gentests = _load(_script("migration-validation", "gen_dbt_tests.py"), "gen_dbt_tests")
 diffkit = _load(_script("migration-validation", "build_customer_diff_kit.py"), "diffkit")
 domo_api = _load(_script("domo-ingestion", "domo_api_client.py"), "domo_api")
+source_extract = _load(_script("domo-source-resolution", "extract_flow_sources.py"), "source_extract")
 
 
 SYNTH_FLOW = {
@@ -167,3 +168,51 @@ def test_mode_b_offline_extract():
     art = domo_api.extract(Fake(), flow_name_filter="orders", log=lambda *a: None)
     assert len(art["dataflows"]) == 1
     assert art["dataset_mapping"] == {"ds1": "Orders"}
+
+
+def test_extract_flow_sources(tmp_path):
+    export = tmp_path / "export"
+    export.mkdir()
+    (export / "dataflows.json").write_text(json.dumps([SYNTH_FLOW]))
+    (export / "dataset_mapping.json").write_text(json.dumps({"ds1": "Orders", "ds2": "Customers"}))
+    streams = [
+        {
+            "id": 10,
+            "dataProvider": {"key": "ms-sql-server"},
+            "transport": {"type": "CONNECTOR"},
+            "updateMethod": "REPLACE",
+            "dataSource": {"id": "ds1"},
+            "configuration": [
+                {"name": "query", "value": "SELECT * FROM dbo.Orders"},
+                {"name": "tableName", "value": "dbo.Orders"},
+            ],
+        },
+        {
+            "id": 11,
+            "dataProvider": {"key": "google-sheets"},
+            "transport": {"type": "CONNECTOR"},
+            "updateMethod": "REPLACE",
+            "dataSource": {"id": "ds2"},
+            "configuration": [
+                {"name": "spreadsheetIDFileName", "value": "abc123sheetid4567890123"},
+                {"name": "sheetName", "value": "Tab1"},
+            ],
+        },
+    ]
+    (export / "streams.json").write_text(json.dumps(streams))
+
+    out = tmp_path / "source_resolution"
+    source_extract.main(str(export), str(out), flow_id=1)
+
+    inv = json.load(open(out / "source_inventory.json"))
+    assert inv["input_count"] == 2
+    by_id = {i["data_source_id"]: i for i in inv["inputs"]}
+    assert by_id["ds1"]["source_kind"] == "database"
+    assert by_id["ds1"]["sql"]["referenced_tables"] == ["Orders"]
+    assert by_id["ds2"]["source_kind"] == "file"
+    assert "docs.google.com" in by_id["ds2"]["file"]["spreadsheet_url"]
+
+    status = json.load(open(out / "source_resolution_status.json"))
+    assert set(status["pending"]) == {"ds1", "ds2"}
+    assert (out / "source_inventory.md").exists()
+    assert (out / "overrides.template.json").exists()

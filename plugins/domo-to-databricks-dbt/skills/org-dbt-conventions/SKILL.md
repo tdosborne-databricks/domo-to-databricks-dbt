@@ -18,10 +18,10 @@ criteria, and Domo-specific scaffolding. It explicitly defers to `dbt` (and `dbt
 general analytics-engineering best practice.
 
 <HARD-GATE>
-Step 3 of the fixed pipeline (domo-ingestion → tile-translation → **org-dbt-conventions** →
-databricks-materialization-policy → dbt-error-triage → migration-validation). Requires
-`tile-translation`'s generated models (and its `conversion_report.json` needs-review list resolved
-or explicitly deferred) before scaffolding. Do not run `dbt build` here — that belongs to
+Step 4 of the fixed pipeline (domo-ingestion → domo-source-resolution → tile-translation →
+**org-dbt-conventions** → databricks-materialization-policy → dbt-error-triage →
+migration-validation). Requires `tile-translation`'s generated models (and its
+`conversion_report.json` needs-review list resolved or explicitly deferred) before scaffolding. Do not run `dbt build` here — that belongs to
 `dbt-error-triage`, after `databricks-materialization-policy` applies storage defaults.
 </HARD-GATE>
 

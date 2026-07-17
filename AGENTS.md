@@ -9,17 +9,18 @@ is a *marketplace* containing one plugin (`plugins/domo-to-databricks-dbt`) whos
 Start with **`using-domo-to-databricks-dbt`** — target selection, workspace isolation, subagent
 dispatch. Then run the fixed pipeline below.
 
-## The eight skills (in order)
+## The nine skills (in order)
 
 1. **`using-domo-to-databricks-dbt`** — entry point; read before any other skill.
 2. **`domo-ingestion`** — Domo export or API → normalized flows + inventory.
-3. **`tile-translation`** — transpile tile DAG → Spark SQL CTEs (deterministic converter).
-4. **`org-dbt-conventions`** — scaffold dbt project; UC `*_src` / `*_dbt` / `*_marts` layout.
-5. **`databricks-materialization-policy`** — `apply_materialization.py` before first build; Phase B
+3. **`domo-source-resolution`** — streams.json → UC discovery → `overrides.json`.
+4. **`tile-translation`** — transpile tile DAG → Spark SQL CTEs (deterministic converter).
+5. **`org-dbt-conventions`** — scaffold dbt project; UC `*_src` / `*_dbt` / `*_marts` layout.
+6. **`databricks-materialization-policy`** — `apply_materialization.py` before first build; Phase B
    proposals after Tier 2.
-6. **`dbt-error-triage`** — `dbt build` to green; learning loop via `known-patterns.md`.
-7. **`migration-validation`** — Tier 1 static → Tier 2 build → Tier 3 diff kit.
-8. **`dbt-project-optimization`** — optional post-migration cleanup (after correctness proven).
+7. **`dbt-error-triage`** — `dbt build` to green; learning loop via `known-patterns.md`.
+8. **`migration-validation`** — Tier 1 static → Tier 2 build → Tier 3 diff kit.
+9. **`dbt-project-optimization`** — optional post-migration cleanup (after correctness proven).
 
 Each skill's `SKILL.md` has a `<HARD-GATE>` with prerequisites and hand-off. Conceptual foundation:
 `plugins/domo-to-databricks-dbt/skills/tile-translation/references/paradigm.md`.

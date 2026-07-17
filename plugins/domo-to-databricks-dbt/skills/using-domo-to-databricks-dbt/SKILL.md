@@ -6,7 +6,7 @@ description: >-
   new flow or batch. Triggers on "migrate a Domo flow", "Domo to dbt", "Magic ETL migration",
   "convert Domo dataflow", or any request that touches `domo-ingestion`, `tile-translation`,
   `org-dbt-conventions`, `databricks-materialization-policy`, `dbt-error-triage`,
-  `migration-validation`, or `dbt-project-optimization`.
+  `domo-source-resolution`, `migration-validation`, or `dbt-project-optimization`.
 ---
 
 # Using domo-to-databricks-dbt
@@ -14,7 +14,7 @@ description: >-
 <EXTREMELY-IMPORTANT>
 This plugin is a FIXED, ORDERED pipeline, not a menu of independent skills:
 
-  domo-ingestion → tile-translation → org-dbt-conventions
+  domo-ingestion → domo-source-resolution → tile-translation → org-dbt-conventions
   → databricks-materialization-policy → dbt-error-triage → migration-validation
   → (optional) dbt-project-optimization
 
@@ -103,7 +103,7 @@ reads it after `org-dbt-conventions` runs.
 
 Every step in this pipeline (`domo-ingestion` through `dbt-project-optimization`) runs as its own
 subagent dispatch by default, not inline in the main conversation. This is a fixed policy, not a
-question to ask the user each time: a single flow migration can touch 150+ models across 6-8
+question to ask the user each time: a single flow migration can touch 150+ models across 7-9
 sequential stages, and running each stage inline burns the main context on intermediate JSON/SQL
 that the next stage doesn't need — only each stage's hand-off summary does. Dispatch keeps the main
 thread free to track pipeline state (which `<HARD-GATE>` was satisfied, what the next step is) while
@@ -115,7 +115,8 @@ delegate (e.g. re-reading one file to confirm a hand-off's prerequisite) — not
 ## Where to start
 
 - **New flow, never ingested**: start at `domo-ingestion`.
-- **Already have `flows/<id>.json` + `inventory.csv`**: start at `tile-translation`.
+- **Already have `flows/<id>.json` + `inventory.csv`, no `overrides.json`**: start at `domo-source-resolution`.
+- **Already have `overrides.json` for the flow**: start at `tile-translation`.
 - **Already have generated dbt models, not yet scaffolded**: start at `org-dbt-conventions`.
 - **Scaffolded, materialization not yet applied**: start at `databricks-materialization-policy`.
 - **Materialization applied, `dbt build` not yet green**: start at `dbt-error-triage`.

@@ -12,7 +12,7 @@ Flat directory (no per-flow subfolders), UTF-8 JSON:
 | `dataflows.json` | list of full flow definitions (`{id, name, actions:[...]}`) | **yes** (required) |
 | `dataset_mapping.json` | `{dataset_id: dataset_name}` | yes (input/output names) |
 | `datasets.json` | dataset metadata — **no column schema** | schema inference only |
-| `complexity_report.json`, `streams.json`, `beast_modes.json`, `_manifest.json` | inventory / governance extras | not required |
+| `complexity_report.json`, `streams.json`, `beast_modes.json`, `_manifest.json` | inventory / governance extras | `streams.json` required for `domo-source-resolution` |
 
 ## Field-by-field mapping (dataflows.json → normalized graph)
 
