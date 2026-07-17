@@ -1,8 +1,9 @@
 # domo-to-databricks-dbt
 
 A cross-tool **agent-skills marketplace** that migrates **Domo Magic ETL dataflows** to **dbt on
-Databricks** — ingest a Domo export, transpile the tile DAG to Spark SQL, scaffold and test a dbt
-project, apply materialization policy, validate in tiers, and deploy as a Workflows **dbt task**.
+Databricks** — ingest a Domo export, resolve connector sources to Unity Catalog, transpile the
+tile DAG to Spark SQL, scaffold and test a dbt project, apply materialization policy, validate in
+tiers, and deploy as a Workflows **dbt task**.
 
 This is a **decompilation** problem, not a syntax conversion: Magic ETL logic lives in serialized
 GUI state. A good migration exploits the dbt/Databricks paradigm rather than mechanically porting
@@ -12,11 +13,11 @@ tiles. Start at
 ## Install
 
 This repo is a plugin marketplace containing one plugin (`domo-to-databricks-dbt`). Skills are plain
-`SKILL.md` files and work across agent tools:
+`SKILL.md` files and work across agent tools. Clone this repository locally, then:
 
 ```bash
-# Claude Code
-claude plugin marketplace add <this-repo>          # reads .claude-plugin/marketplace.json
+# Claude Code (from the repo root)
+claude plugin marketplace add /path/to/domo-to-databricks-dbt-plugin
 claude plugin install domo-to-databricks-dbt@domo-to-databricks-dbt-marketplace
 ```
 
@@ -80,19 +81,22 @@ Generated projects use **three schemas** so raw sources don't mix with marts in 
 | Staging + intermediate | `{project}_dbt` | `profiles.yml` / dbt task `schema` |
 | Marts (Domo outputs) | `{project}_dbt_marts` | `dbt_project.yml` `marts: +schema: marts` |
 
-Land ingested tables in `*_src`. Point overrides at `main.<project>_dbt_src.<table>`.
+Land ingested tables in `*_src`. Point overrides at `main.<project>_dbt_src.<table>` (native Delta
+tables or foreign federated catalogs).
 
 ## End-to-end workflow
 
 1. **Ingest** (`domo-ingestion`) → flows, inventory, completeness report.
-2. **Per flow**: transpile (`tile-translation`); resolve `-- TODO` tiles; scaffold
+2. **Resolve sources** (`domo-source-resolution`) → extract `streams.json` for the target flow,
+   search Unity Catalog with the user, produce `overrides.json`.
+3. **Per flow**: transpile (`tile-translation`); resolve `-- TODO` tiles; scaffold
    (`org-dbt-conventions`); **apply** materialization Phase A (`apply_materialization.py` +
    `dbt build`); triage to green (`dbt-error-triage`); Tier 1 + Tier 2 (`migration-validation`).
-3. **Deploy** as a Databricks Asset Bundle with a Workflows **dbt task** (recommended for
+4. **Deploy** as a Databricks Asset Bundle with a Workflows **dbt task** (recommended for
    serverless/headless — auth is the job identity, no PAT). See
    `migration-validation/references/authentication.md`.
-4. **Tier 3** customer data-diff (`customer_diff_kit/`) → cutover sign-off.
-5. **(Optional)** `dbt-project-optimization` after Tier 2/3 pass.
+5. **Tier 3** customer data-diff (`customer_diff_kit/`) → cutover sign-off.
+6. **(Optional)** `dbt-project-optimization` after Tier 2/3 pass.
 
 > Batch prompts must **name skills explicitly** — agents under-trigger in headless runs.
 
@@ -101,6 +105,7 @@ Land ingested tables in `*_src`. Point overrides at `main.<project>_dbt_src.<tab
 - Python 3.9+ (skill scripts use the standard library; converter tests use pytest).
 - Official dbt + databricks plugins (see above).
 - Databricks workspace + SQL warehouse (or Workflows dbt task) for Tier 2 builds.
+- Domo Step-1 extract including `dataflows.json`, `dataset_mapping.json`, and `streams.json`.
 
 ## Tests
 
@@ -108,20 +113,3 @@ Land ingested tables in `*_src`. Point overrides at `main.<project>_dbt_src.<tab
 cd plugins/domo-to-databricks-dbt
 python3 -m pytest tests/ skills/tile-translation/scripts/converter/tests/
 ```
-
-**93 tests** (82 converter + 11 pipeline integration) as of v2.0.
-
-## Status & known limitations
-
-**v2.0** — fixed hard-gate pipeline, converter learning loop, CTE granularity (tile chains collapse
-into models at source/sink/reuse boundaries), `apply_materialization.py` fan-out view/table split.
-
-**Validated on:** AppDirect export (~70 models / 272 tiles) and Advisor_Services_ETL flow 67
-(~153 models) on mock data — Tier 2 green via local `dbt build` and Workflows dbt task.
-
-**Expect human triage on hard flows:** raw SQL tiles, flow-inferred source schemas missing columns,
-`schemaModification2` join renames, and Domo-only computed fields not present on landed UC tables.
-`dbt-error-triage/references/known-patterns.md` tracks promoted vs ad-hoc fixes.
-
-**Tier 3** requires real Domo exports run through `customer_diff_kit/` — not automated without
-customer data access.
